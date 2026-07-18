@@ -64,6 +64,10 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain("input-mode.active");
     expect(dashboard.body).toContain("Live representative requested");
     expect(dashboard.body).toContain("Take over");
+    expect(dashboard.body).toContain('id="directText"');
+    expect(dashboard.body).toContain("Speak direct text");
+    expect(dashboard.body).toContain("/v1/templates/speak");
+    expect(dashboard.body).not.toContain('id="wire"');
     expect(dashboard.body).toContain("html,body{height:100%;overflow:hidden}");
     expect(dashboard.body).toContain(".timeline{min-height:0;overflow-y:auto");
     expect(dashboard.body).toContain("session-rename-input");
