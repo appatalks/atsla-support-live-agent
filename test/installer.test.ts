@@ -17,4 +17,11 @@ describe("installation entry points", () => {
     expect(installer).toContain('node "$electron_dir/install.js"');
     expect(installer).toContain('npm install --include=dev');
   });
+
+  it("loads an optional persistent configuration file for the Copilot ACP bridge", () => {
+    const supervisor = readFileSync(`${root}/tools/voice-bridge.sh`, "utf8");
+    expect(supervisor).toContain('ENV_FILE="${VOICE_BRIDGE_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/voice-bridge/env}"');
+    expect(supervisor).toContain('source "$ENV_FILE"');
+    expect(supervisor).toContain("EVA_ACP_BRIDGE_SCRIPT");
+  });
 });

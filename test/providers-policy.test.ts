@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { CopilotAcpProvider, LocalQwenProvider, OpenAiCompatibleProvider, ProviderRouter, SimulationProvider } from "../src/providers.js";
 import { MeetingCoordinator } from "../src/coordinator.js";
 import { LocalVoiceBridgeOutput, SimulatedSpeechOutput } from "../src/voice.js";
@@ -160,6 +161,11 @@ describe("live representative escalation", () => {
 });
 
 describe("network provider contracts", () => {
+  it("allows ATSLA's full guarded context budget through the local Qwen bridge", () => {
+    const bridge = readFileSync(new URL("../tools/qwen_bridge.py", import.meta.url), "utf8");
+    expect(bridge).toContain("max_length=60_000");
+  });
+
   it("sends Qwen3 through an OpenAI-compatible local endpoint", async () => {
     let receivedUrl = "";
     let receivedPayload: Record<string, unknown> = {};

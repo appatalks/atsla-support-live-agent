@@ -26,7 +26,7 @@ MEETING_PROMPT = (
 
 class Message(BaseModel):
     role: Literal["system", "user", "assistant"]
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(min_length=1, max_length=60_000)
 
 
 class CompletionRequest(BaseModel):

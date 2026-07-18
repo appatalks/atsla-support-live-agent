@@ -130,6 +130,14 @@ Local Qwen receives only the current request transcript and explicit application
 
 This keeps ATSLA as the authority for client context and prevents Copilot conversation history from crossing clients.
 
+For the installed application, configure the EVA ACP bridge path in `~/.config/voice-bridge/env` when EVA is not a sibling checkout:
+
+```bash
+EVA_ACP_BRIDGE_SCRIPT=/path/to/eva-agent/tools/acp_bridge.py
+```
+
+Restart ATSLA after changing this file. The **GitHub Copilot CLI** provider is shown as offline until its authenticated local ACP bridge is running on `127.0.0.1:8888`.
+
 ## Response Modes
 
 | Mode | Behavior |
