@@ -6,6 +6,7 @@ OS="$(uname -s)"
 VOICE_MODULE_DIR="${VOICE_CLONE_MODULE_PATH:-$ROOT_DIR/vendor/voice_clone_module}"
 INSTALL_VOICE="${VOICE_BRIDGE_INSTALL_VOICE:-true}"
 INSTALL_WHISPER="${VOICE_BRIDGE_INSTALL_WHISPER:-true}"
+INSTALL_LAUNCHER="${VOICE_BRIDGE_INSTALL_LAUNCHER:-true}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -37,7 +38,7 @@ check_linux_prerequisites() {
 }
 
 setup_voice_module() {
-  [[ "$INSTALL_VOICE" == "true" ]] || return
+  [[ "$INSTALL_VOICE" == "true" ]] || return 0
   if [[ ! -f "$VOICE_MODULE_DIR/install.sh" ]]; then
     if command -v gh >/dev/null 2>&1; then
       mkdir -p "$(dirname "$VOICE_MODULE_DIR")"
@@ -52,6 +53,54 @@ setup_voice_module() {
     exit 1
   }
   bash "$VOICE_MODULE_DIR/install.sh"
+}
+
+install_launcher() {
+  [[ "$INSTALL_LAUNCHER" == "true" ]] || return
+  local bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  local app_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  local launcher="$bin_dir/atsla"
+  local quoted_root
+  quoted_root="$(printf '%q' "$ROOT_DIR")"
+  mkdir -p "$bin_dir"
+  cat > "$launcher" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR=$quoted_root
+case "\${1:-start}" in
+  start) exec npm --prefix "\$ROOT_DIR" run app:start ;;
+  stop) exec npm --prefix "\$ROOT_DIR" run app:stop ;;
+  status) exec npm --prefix "\$ROOT_DIR" run app:status ;;
+  update)
+    git -C "\$ROOT_DIR" pull --ff-only
+    npm --prefix "\$ROOT_DIR" install
+    echo "ATSLA updated. Run: atsla start"
+    ;;
+  path) printf '%s\\n' "\$ROOT_DIR" ;;
+  help|--help|-h)
+    cat <<'USAGE'
+Usage: atsla [start|stop|status|update|path]
+USAGE
+    ;;
+  *) echo "Unknown ATSLA command: \$1" >&2; exit 2 ;;
+esac
+EOF
+  chmod +x "$launcher"
+  if [[ "$OS" == "Linux" ]]; then
+    mkdir -p "$app_dir"
+    cat > "$app_dir/atsla-support-live-agent.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=ATSLA | Support Live Agent
+Comment=Local operator-controlled AI support agent
+Exec=$launcher start
+Terminal=false
+Categories=Utility;Network;
+StartupNotify=true
+EOF
+  fi
+  echo "Installed launcher: $launcher"
+  [[ "$OS" == "Linux" ]] && echo "Installed desktop entry: $app_dir/atsla-support-live-agent.desktop"
 }
 
 main() {
@@ -70,25 +119,38 @@ main() {
   if [[ "$INSTALL_WHISPER" == "true" ]]; then
     bash "$ROOT_DIR/tools/bootstrap-whisper.sh"
   fi
+  install_launcher
   cat <<'EOF'
 Installation complete.
 
-Start: npm run app:start
-Status: npm run app:status
-Stop: npm run app:stop
+Start: atsla
+Status: atsla status
+Stop: atsla stop
+
+If atsla is not found, add ~/.local/bin to your PATH or run npm run app:start from this checkout.
 EOF
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'EOF'
-Usage: ./install.sh
+Usage: ./tools/install.sh [--skip-voice] [--skip-whisper] [--no-launcher]
 
 Environment options:
   VOICE_CLONE_MODULE_PATH     Existing private voice_clone_module checkout.
   VOICE_BRIDGE_INSTALL_VOICE  Set false to skip voice module setup.
   VOICE_BRIDGE_INSTALL_WHISPER Set false to skip local Whisper bootstrap.
+  VOICE_BRIDGE_INSTALL_LAUNCHER Set false to skip atsla launcher and desktop entry.
 EOF
   exit 0
 fi
+
+for argument in "$@"; do
+  case "$argument" in
+    --skip-voice) INSTALL_VOICE=false ;;
+    --skip-whisper) INSTALL_WHISPER=false ;;
+    --no-launcher) INSTALL_LAUNCHER=false ;;
+    *) echo "Unknown option: $argument (try --help)" >&2; exit 2 ;;
+  esac
+done
 
 main "$@"

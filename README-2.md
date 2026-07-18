@@ -27,13 +27,23 @@ Logs default to `~/.local/state/voice-bridge/`. The supervisor owns its children
 
 ## Installation
 
+For a public release, use the bootstrap shown in [README.md](README.md). It clones ATSLA to `~/.local/share/atsla-support-live-agent`, runs the versioned installer, creates the `atsla` launcher, and creates a Linux desktop entry.
+
 ```bash
-npm install
-npm test
-npm run typecheck
+curl -fsSL https://raw.githubusercontent.com/appatalks/atsla-support-live-agent/main/get-atsla.sh | bash
+atsla
+```
+
+For a checked-out repository, use the same installer directly:
+
+```bash
+bash tools/install.sh
+atsla
 ```
 
 For live Linux operation, provide PipeWire/PulseAudio compatibility tools (`pactl`, `pw-cat`, and FFmpeg), a local `whisper.cpp` checkout and model, the authorized AppaTalks reference WAV, and either a local Qwen model service or an authenticated `copilot` CLI. Use `.env.example` as the configuration reference. Do not commit a populated `.env` file.
+
+The installer supports `--skip-voice`, `--skip-whisper`, and `--no-launcher` for development or staged setup. `atsla status`, `atsla stop`, and `atsla update` manage an installed checkout.
 
 ## Audio Routing
 

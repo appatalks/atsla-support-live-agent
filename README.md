@@ -1,78 +1,59 @@
 # ATSLA | Support Live Agent
 
-ATSLA is a local, operator-controlled AI support agent for live customer conversations. It listens to call audio, prepares or speaks concise support responses through a local voice profile, and gives the operator clear control over every session, client workspace, and intervention.
-
-It is designed for conversations in Microsoft Teams, Zoom, Slack, browser calls, and other communication tools that can use standard system audio devices. The agent runs locally: transcription, reasoning, session control, and voice output remain on the operator's machine.
-
 ![ATSLA live support flow](docs/atsla-flow.png)
 
-## What It Does
+[Technical guide](README-2.md) | [Demo client](demo-client-folder) | [Issues](https://github.com/appatalks/atsla-support-live-agent/issues)
 
-- Keeps a distinct session history for each client workspace.
-- Requires an explicit client context load before client files enter a prompt.
-- Sends the Standard Greeting automatically whenever a new session begins.
-- Supports monitor, approval, and autonomous response modes.
-- Routes generated voice to a dedicated virtual microphone, separate from the operator microphone.
-- Lets the operator hear both the caller and generated agent audio locally.
-- Offers local Qwen and authenticated GitHub Copilot CLI reasoning options.
-- Uses a local AppaTalks voice profile with adjustable expression and pacing.
-- Detects live-representative requests and provides immediate operator takeover controls.
+ATSLA is a local, operator-controlled AI support agent for live customer conversations. It listens to call audio, applies explicit global and client guardrails, and speaks through the AppaTalks voice profile when the operator authorizes or enables autonomous participation.
 
-## Operator Workflow
+## Public Quick Install
 
-1. Start ATSLA and join the live call.
-2. Select or create the client workspace.
-3. Load that client's context when it is appropriate for the conversation.
-4. Start a session. ATSLA sends the Standard Greeting and records the session only under that client workspace.
-5. Choose how the agent participates: monitor, approve responses, or allow autonomous responses.
-6. Use operator takeover whenever a person should resume the conversation.
-
-ATSLA deliberately keeps client knowledge, meeting records, learned observations, and sessions separated. Switching client workspaces clears live conversation state and displays only that client's sessions.
-
-## Quick Start
-
-Prerequisites: Linux with PipeWire/PulseAudio for live virtual audio routing, Node.js, Python, a local voice reference, and optional local Qwen or authenticated GitHub Copilot CLI access.
+Once the repository is public, install ATSLA with one command:
 
 ```bash
-npm install
-npm test
-npm run typecheck
-npm run app:start
+curl -fsSL https://raw.githubusercontent.com/appatalks/atsla-support-live-agent/main/get-atsla.sh | bash
 ```
 
-The Electron operator console opens automatically. To stop all supervised services and remove virtual audio devices:
+Then launch ATSLA:
 
 ```bash
-npm run app:stop
+atsla
 ```
 
-For simulated development without live call routing:
+The installer creates an `atsla` command and, on Linux, a desktop application entry. Use `atsla status`, `atsla stop`, and `atsla update` for everyday operation. The first installation checks required local audio, transcription, voice, and model dependencies; it reports any missing system prerequisite before changing the audio graph.
+
+Or clone manually:
 
 ```bash
-npm run simulate
-npm start
+git clone https://github.com/appatalks/atsla-support-live-agent.git
+cd atsla-support-live-agent
+bash tools/install.sh
+atsla
 ```
 
-## Demo Client And Guardrails
+## What You Get
 
-Open [demo-client-folder](demo-client-folder) from the **Client workspace** panel to try the full client-context workflow with fictional data. The demo includes a bulk data drop, an account CSV, product reference material, and a client guardrail file.
+| | |
+| --- | --- |
+| **Live call bridge** | PipeWire call capture, isolated agent microphone, and local operator monitoring. |
+| **AppaTalks voice** | Local voice synthesis with a prewarmed Standard Greeting. |
+| **Operator control** | Monitor, approve, autonomous, mute, takeover, and live-representative escalation controls. |
+| **Client isolation** | Separate sessions, explicit context loading, and no Copilot cross-client memory. |
+| **Guardrails** | Global and per-client disclosure, sensitivity, and escalation rules take precedence over reference material. |
+| **Local reasoning** | Local Qwen or authenticated GitHub Copilot CLI reasoning. |
 
-Every client workspace now includes a `context-drop/` folder. Bulk-drop reviewed `.md`, `.txt`, `.json`, `.csv`, `.yaml`, or `.yml` files there, then select **Load context** in ATSLA to make that client's context available. Maintain `context-drop/CONTEXT-GUARDRAILS.md` to describe approved topics, sensitive material, avoided topics, escalation conditions, and safe alternatives.
+## Get Started
 
-Global rules apply across every session. Copy [docs/GLOBAL-GUARDRAILS.template.md](docs/GLOBAL-GUARDRAILS.template.md) into the root of your configured Global shared knowledge folder as `GLOBAL-GUARDRAILS.md` and tailor it to your organization.
+1. Launch `atsla` and join the call.
+2. Select or create a client workspace.
+3. Use **Open folder** to add approved files to `context-drop/` and define `CONTEXT-GUARDRAILS.md`.
+4. Select **Load context**, then start a session. ATSLA sends the Standard Greeting once.
+5. Choose Monitor, Approve, or Autonomous mode. Use takeover whenever a person should resume the conversation.
 
-Guardrails are loaded ahead of reference material. Global guardrails take precedence over client guardrails; client guardrails take precedence over bulk-dropped and other reference files.
+Try the fictional [demo-client-folder](demo-client-folder) first. Real client data belongs outside this repository.
 
-## Privacy And Safety
+## Privacy
 
-ATSLA is an operator tool, not an unattended participant. Inform participants that an AI agent is present and obtain the required consent before capturing or retaining meeting material.
+ATSLA is an operator tool, not an unattended participant. Inform participants that an AI agent is present and obtain the required consent before capturing or retaining meeting material. Client context is opt-in and global/client guardrails are loaded before reference material.
 
-Client context is opt-in. The application owns the context boundary: Copilot is launched without memory, continuation, custom instructions, built-in MCPs, or durable request logs; every Copilot completion receives a fresh ACP session. Client data must not be placed in the global shared knowledge folder.
-
-## Documentation
-
-Detailed installation, audio routing, configuration, architecture, environment variables, API routes, and validation steps are in [README-2.md](README-2.md).
-
-## Project Status
-
-ATSLA is an actively developed local support-agent project. Test carefully in a controlled call before using it in a customer-facing workflow. Review your organization's privacy, retention, accessibility, and disclosure requirements before deployment.
+For manual installation, architecture, audio routing, client context, themes, troubleshooting, APIs, and validation, see [README-2.md](README-2.md).
