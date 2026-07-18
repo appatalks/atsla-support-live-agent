@@ -8,7 +8,7 @@ ATSLA is a local, operator-controlled AI support agent for live customer convers
 
 ## Public Quick Install
 
-Once the repository is public, install ATSLA with one command:
+Install ATSLA with one command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/appatalks/atsla-support-live-agent/main/get-atsla.sh | bash
