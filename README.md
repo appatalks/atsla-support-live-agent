@@ -56,4 +56,8 @@ Try the fictional [demo-client-folder](demo-client-folder) first. Real client da
 
 ATSLA is an operator tool, not an unattended participant. Inform participants that an AI agent is present and obtain the required consent before capturing or retaining meeting material. Client context is opt-in and global/client guardrails are loaded before reference material.
 
+## Supervision And Responsibility
+
+ATSLA can generate inaccurate, incomplete, or inappropriate responses. A qualified human operator must actively supervise every live use, review or override agent output when needed, and take over the conversation for sensitive, high-impact, legal, financial, medical, security, or account-authority decisions. The project is provided as a tool; operators are responsible for validating outputs, protecting client data, meeting all applicable laws and policies, and obtaining any required participant consent.
+
 For manual installation, architecture, audio routing, client context, themes, troubleshooting, APIs, and validation, see [README-2.md](README-2.md).
