@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const path = require("node:path");
@@ -30,7 +30,9 @@ function createWindow() {
     height: 1120,
     minWidth: 1280,
     minHeight: 800,
-    backgroundColor: "#f3f0e7",
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -65,24 +67,6 @@ async function loadVoiceBridge(window) {
   if (!window.isDestroyed()) dialog.showErrorBox("ATSLA | Support Live Agent could not start", lastError.message);
 }
 
-function createMenu() {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    {
-      label: "ATSLA | Support Live Agent",
-      submenu: [
-        { label: "Wire Teams Browser Audio", click: () => wireClientAudio().catch((error) => dialog.showErrorBox("Audio routing failed", error.message)) },
-        { label: "Stop Agent Speech", click: () => request("/v1/stop", { method: "POST" }).catch((error) => dialog.showErrorBox("Stop failed", error.message)) },
-        { type: "separator" },
-        { role: "quit" },
-      ],
-    },
-    {
-      label: "View",
-      submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { role: "togglefullscreen" }],
-    },
-  ]));
-}
-
 ipcMain.handle("voiceBridge:wireClientAudio", (_event, inputMode) => wireClientAudio(inputMode));
 ipcMain.handle("voiceBridge:clientAudioStatus", async () => {
   const { stdout } = await execFileAsync("bash", [routeScript, "status"]);
@@ -104,7 +88,6 @@ ipcMain.on("voiceBridge:rendererReady", () => {
 });
 
 app.whenReady().then(() => {
-  createMenu();
   createWindow();
   wireClientAudio().catch(() => {});
   routingTimer = setInterval(() => wireClientAudio().catch(() => {}), 2000);
