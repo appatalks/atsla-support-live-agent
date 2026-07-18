@@ -30,9 +30,13 @@ function createWindow() {
     height: 1120,
     minWidth: 1280,
     minHeight: 800,
-    frame: false,
-    transparent: true,
-    backgroundColor: "#00000000",
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#03072b",
+      symbolColor: "#eaf3ff",
+      height: 36,
+    },
+    backgroundColor: "#03072b",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

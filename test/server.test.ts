@@ -68,9 +68,8 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain("Speak direct text");
     expect(dashboard.body).toContain("/v1/templates/speak");
     expect(dashboard.body).not.toContain('id="wire"');
-    expect(dashboard.body).toContain("height:calc(100vh - 16px)");
-    expect(dashboard.body).toContain("-webkit-app-region:drag");
-    expect(dashboard.body).toContain("window-drag-strip");
+    expect(dashboard.body).toContain("height:calc(100vh - 44px)");
+    expect(dashboard.body).not.toContain("window-drag-strip");
     expect(dashboard.body).toContain("event.target===byId('settingsOverlay')");
     expect(dashboard.body).toContain(".timeline{min-height:0;overflow-y:auto");
     expect(dashboard.body).toContain("session-rename-input");
