@@ -1,6 +1,7 @@
 import { type LocalModelId, type ResponseMode, modelProfiles, responseTemplates } from "./domain.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { fastifyRateLimit } from "@fastify/rate-limit";
 import { MeetingCoordinator } from "./coordinator.js";
 import { DraftStore, ResponsePolicy } from "./policy.js";
 import { CopilotAcpProvider, LocalQwenProvider, OpenAiCompatibleProvider, ProviderRouter, SimulationProvider } from "./providers.js";
@@ -54,6 +55,9 @@ export function buildServer() {
   const coordinator = new MeetingCoordinator(provider, new ResponsePolicy(), new DraftStore(), speech, settingsStore, new ClientWorkspace(), new SessionStore());
   const audio = new AudioControl(new URL("../tools/audio-bridge.sh", import.meta.url).pathname, process.env.VOICE_BRIDGE_ENABLE_AUDIO_CONTROL === "true");
 
+  fastifyRateLimit(app, { global: true, max: 120, timeWindow: "1 minute" }, (error) => {
+    if (error) throw error;
+  });
   app.register(cors, { origin: false });
   app.get("/", async (_request, reply) => reply.type("text/html; charset=utf-8").send(dashboard));
   app.get("/health", async () => ({

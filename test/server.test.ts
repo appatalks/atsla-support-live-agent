@@ -40,6 +40,15 @@ describe("HTTP control plane", () => {
     expect(authorization.json().dispatch.status).toBe("spoken");
   });
 
+  it("rate-limits repeated control-plane requests", async () => {
+    const server = buildServer();
+    servers.push(server);
+
+    let response = await server.inject({ method: "GET", url: "/health" });
+    for (let attempt = 0; attempt < 120; attempt += 1) response = await server.inject({ method: "GET", url: "/health" });
+    expect(response.statusCode).toBe(429);
+  });
+
   it("serves the local simulation dashboard and model profiles", async () => {
     const server = buildServer();
     servers.push(server);
@@ -78,7 +87,11 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain("session-rename-input");
     expect(dashboard.body).not.toContain("window.prompt('Rename session'");
     expect(dashboard.body).toContain("Writing meeting summary...");
-    const script = dashboard.body.match(/<script>([\s\S]*)<\/script>/)?.[1];
+    const scriptStart = dashboard.body.indexOf("<script>");
+    const scriptEnd = dashboard.body.lastIndexOf("</script>");
+    const script = scriptStart >= 0 && scriptEnd > scriptStart
+      ? dashboard.body.slice(scriptStart + "<script>".length, scriptEnd)
+      : undefined;
     expect(script).toBeTruthy();
     expect(() => new Function(script!)).not.toThrow();
     expect((await server.inject({ method: "GET", url: "/v1/models" })).json().profiles["qwen3-8b"].model).toBe("Qwen/Qwen3-8B");

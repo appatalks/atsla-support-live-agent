@@ -47,6 +47,14 @@ describe("client workspace", () => {
     expect(existsSync(join(folder, "context-drop", "README.md"))).toBe(true);
     expect(readFileSync(join(folder, "context-drop", "CONTEXT-GUARDRAILS.md"), "utf8")).toContain("Sensitive Or Restricted");
   });
+
+  it("rejects workspace paths outside the operator home and configured clients root", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-client-root-"));
+    folders.push(root);
+    const workspace = new ClientWorkspace(root);
+
+    expect(() => workspace.select({ path: "/etc/voice-bridge-client" })).toThrow("Workspace paths must be inside");
+  });
 });
 
 describe("default voice profile", () => {

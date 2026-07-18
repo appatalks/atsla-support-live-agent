@@ -186,7 +186,9 @@ export class ClientWorkspace {
   constructor(private readonly defaultRoot = process.env.VOICE_BRIDGE_CLIENTS_ROOT ?? join(homedir(), "Documents", "Voice Bridge Clients")) {}
 
   select(request: { path?: string; name?: string }): string {
-    const folder = request.path?.trim() ? resolve(request.path) : join(this.defaultRoot, safeName(request.name ?? "New Client"));
+    const folder = request.path?.trim()
+      ? this.safePath(request.path)
+      : join(resolve(this.defaultRoot), safeName(request.name ?? "New Client"));
     mkdirSync(folder, { recursive: true });
     mkdirSync(join(folder, "knowledge"), { recursive: true });
     mkdirSync(join(folder, "skills"), { recursive: true });
@@ -229,7 +231,7 @@ export class ClientWorkspace {
 
   prepareGlobalKnowledge(folder: string): string {
     if (!folder.trim()) throw new Error("Global knowledge path is required.");
-    const resolved = resolve(folder);
+    const resolved = this.safePath(folder, true);
     mkdirSync(resolved, { recursive: true });
     const readme = join(resolved, "README.md");
     if (!existsSync(readme)) {
@@ -303,6 +305,16 @@ export class ClientWorkspace {
     const roots = [join(folder, "client-profile.json"), join(folder, "context-drop"), join(folder, "knowledge"), join(folder, "skills"), join(folder, "learnings")];
     return roots.flatMap((root) => existsSync(root) && statSync(root).isDirectory() ? walk(root) : existsSync(root) ? [root] : []).filter(isContextFile);
   }
+
+  private safePath(value: string, allowApprovedRoot = false): string {
+    const folder = resolve(value);
+    const configuredRoot = resolve(this.defaultRoot);
+    const allowedRoots = [resolve(homedir()), configuredRoot, resolve(configuredRoot, "..")];
+    if (!allowedRoots.some((root) => isPathWithin(root, folder, allowApprovedRoot))) {
+      throw new Error("Workspace paths must be inside your home directory or the configured client workspace root.");
+    }
+    return folder;
+  }
 }
 
 function normalizeProfile(profile: AgentProfile): AgentProfile {
@@ -361,7 +373,22 @@ function clampVoiceNumber(value: number, fallback: number): number {
 }
 
 function safeName(value: string): string {
-  return value.trim().replace(/[^a-zA-Z0-9._ -]+/g, "-").replace(/\s+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "client";
+  let result = "";
+  let pendingSeparator = false;
+  for (const character of value.trim()) {
+    const code = character.charCodeAt(0);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    const isDigit = code >= 48 && code <= 57;
+    if (isLetter || isDigit || character === "." || character === "_") {
+      if (pendingSeparator && result) result += "-";
+      result += character;
+      pendingSeparator = false;
+    } else {
+      pendingSeparator = true;
+    }
+    if (result.length >= 80) break;
+  }
+  return result.slice(0, 80) || "client";
 }
 
 function clampDelay(value: number): number {
@@ -378,6 +405,11 @@ function isAppearanceTheme(value: unknown): value is AppearanceTheme {
 
 function isResponseMode(value: unknown): value is ResponseMode {
   return value === "disabled" || value === "suggest" || value === "approval" || value === "guarded-autonomous" || value === "autonomous";
+}
+
+function isPathWithin(root: string, path: string, allowRoot: boolean): boolean {
+  const pathFromRoot = relative(root, path);
+  return (allowRoot || Boolean(pathFromRoot)) && !pathFromRoot.startsWith("..") && !pathFromRoot.startsWith("/");
 }
 
 function walk(folder: string): string[] {

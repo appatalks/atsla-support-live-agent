@@ -34,6 +34,7 @@
   "homepage": "https://github.com/appatalks/atsla-support-live-agent#readme",
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.1.0",
     "fastify": "^5.10.0"
   },
   "devDependencies": {

@@ -357,10 +357,11 @@ export class MeetingCoordinator {
   private scheduleAutonomousReply(): void {
     if (this.autonomousTimer) clearTimeout(this.autonomousTimer);
     this.record("thinking", "Waiting for the current speaker to finish.");
+    const delay = Math.max(1_500, Math.min(20_000, this.settings.autonomyDelayMs));
     this.autonomousTimer = setTimeout(() => {
       this.autonomousTimer = undefined;
       void this.autonomousReply();
-    }, this.settings.autonomyDelayMs);
+    }, delay);
   }
 
   private registerEscalation(text: string, activity: string): void {

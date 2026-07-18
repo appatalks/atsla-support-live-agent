@@ -1,11 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { type MeetingSession, type MeetingSessionSummary } from "./domain.js";
 
 export class SessionStore {
-  constructor(private readonly root = process.env.VOICE_BRIDGE_SESSIONS_PATH ?? join(homedir(), ".local", "share", "voice-bridge", "sessions")) {
+  private readonly root: string;
+
+  constructor(root = process.env.VOICE_BRIDGE_SESSIONS_PATH ?? join(homedir(), ".local", "share", "voice-bridge", "sessions")) {
+    this.root = resolve(root);
     mkdirSync(this.root, { recursive: true });
   }
 
@@ -51,10 +54,10 @@ export class SessionStore {
     const selectedWorkspace = clientWorkspace.trim();
     if (!selectedWorkspace) return [];
     return readdirSync(this.root)
-      .filter((name) => name.endsWith(".json"))
+      .filter(isSessionFileName)
       .flatMap((name) => {
         try {
-          const session = JSON.parse(readFileSync(join(this.root, name), "utf8")) as MeetingSession;
+          const session = JSON.parse(readFileSync(this.path(name.slice(0, -5)), "utf8")) as MeetingSession;
           if (session.clientWorkspace !== selectedWorkspace) return [];
           return [{
             id: session.id,
@@ -78,6 +81,17 @@ export class SessionStore {
 
   private path(id: string): string {
     if (!/^[a-zA-Z0-9-]+$/.test(id)) throw new Error("Invalid session identifier.");
-    return resolve(this.root, `${id}.json`);
+    const path = resolve(this.root, `${id}.json`);
+    if (!isChildPath(this.root, path)) throw new Error("Invalid session path.");
+    return path;
   }
+}
+
+function isChildPath(root: string, path: string): boolean {
+  const pathFromRoot = relative(root, path);
+  return Boolean(pathFromRoot) && !pathFromRoot.startsWith("..") && !pathFromRoot.startsWith("/");
+}
+
+function isSessionFileName(name: string): boolean {
+  return /^[a-zA-Z0-9-]+\.json$/.test(name);
 }
