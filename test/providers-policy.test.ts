@@ -158,6 +158,20 @@ describe("live representative escalation", () => {
     expect(coordinator.state().drafts[0].reply.text).not.toContain("detectEscalation");
     expect(coordinator.acknowledgeEscalation(escalation.id).status).toBe("acknowledged");
   });
+
+  it("raises the same operator alert when the agent hands the conversation off", async () => {
+    const provider = {
+      id: "local-qwen" as const,
+      complete: async () => ({ text: "I need to escalate this to the operator so they can take it from here.", provider: "local-qwen" as const, model: "test" }),
+    };
+    const coordinator = new MeetingCoordinator(provider, new ResponsePolicy("autonomous"), new DraftStore(), new SimulatedSpeechOutput());
+
+    const result = await coordinator.respondToConversation("Handle the customer request.");
+
+    expect(result.dispatch?.status).toBe("spoken");
+    expect(coordinator.state().escalations[0]).toMatchObject({ status: "pending", text: "I need to escalate this to the operator so they can take it from here." });
+    expect(coordinator.state().activity.some((activity) => activity.message.includes("Agent escalated to the operator"))).toBe(true);
+  });
 });
 
 describe("network provider contracts", () => {

@@ -102,6 +102,7 @@ export class MeetingCoordinator {
       return { draft };
     }
     const draft = this.drafts.create(question, reply, this.policy.disposition(question));
+    if (isOperatorEscalation(reply.text)) this.registerEscalation(reply.text, "Agent escalated to the operator. Operator intervention required.");
     const dispatch = draft.disposition === "authorized" ? await this.speak(draft) : undefined;
     if (!dispatch) this.record("pending", "Response is ready for your review.", draft.id);
     this.persistSession();
@@ -343,9 +344,7 @@ export class MeetingCoordinator {
       this.autonomousTimer = undefined;
     }
     this.stopSpeech();
-    this.escalations.push({ id: randomUUID(), text: recentText, createdAt: new Date().toISOString(), status: "pending" });
-    if (this.escalations.length > 20) this.escalations.shift();
-    this.record("error", "Live representative requested. Operator intervention required.");
+    this.registerEscalation(recentText, "Live representative requested. Operator intervention required.");
     const handoffText = "Absolutely. I'm notifying a live representative now. Please hold for just a moment.";
     try {
       await this.speakTemplate(handoffText);
@@ -362,6 +361,13 @@ export class MeetingCoordinator {
       this.autonomousTimer = undefined;
       void this.autonomousReply();
     }, this.settings.autonomyDelayMs);
+  }
+
+  private registerEscalation(text: string, activity: string): void {
+    if (this.escalations.some((item) => item.status === "pending")) return;
+    this.escalations.push({ id: randomUUID(), text, createdAt: new Date().toISOString(), status: "pending" });
+    if (this.escalations.length > 20) this.escalations.shift();
+    this.record("error", activity);
   }
 
   private async autonomousReply(): Promise<void> {
@@ -475,6 +481,10 @@ export function isNonActionableTranscript(text: string): boolean {
 function isSilentModelReply(text: string): boolean {
   const normalized = text.trim();
   return normalized === NO_RESPONSE_SENTINEL || /^no helpful contribution needed\b/i.test(normalized) || /^no response needed\b/i.test(normalized);
+}
+
+function isOperatorEscalation(text: string): boolean {
+  return /\b(?:escalat(?:e|es|ed|ing)|transfer|route|hand(?:ing)?\s+(?:this\s+)?(?:over|off))\b.{0,100}\b(?:operator|supervisor|human|live\s+(?:agent|representative)|representative)\b/i.test(text);
 }
 
 function atslaIdentityReply(question: string, transcript: TranscriptEvent[]): ModelReply | undefined {
