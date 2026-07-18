@@ -4,7 +4,7 @@
 
 [Technical guide](README-2.md) | [Demo client](demo-client-folder) | [Issues](https://github.com/appatalks/atsla-support-live-agent/issues)
 
-ATSLA is a local, operator-controlled AI support agent for live customer conversations. It listens to call audio, applies explicit global and client guardrails, and speaks through the AppaTalks voice profile when the operator authorizes or enables autonomous participation.
+ATSLA is a local, operator-controlled AI support agent for live customer conversations. It listens to call audio, applies explicit global and client guardrails, and speaks through voice profiles when the operator authorizes or enables autonomous participation.
 
 ## Public Quick Install
 
