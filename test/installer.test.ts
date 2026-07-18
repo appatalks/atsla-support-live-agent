@@ -14,5 +14,7 @@ describe("installation entry points", () => {
     expect(installer).toContain('local launcher="$bin_dir/atsla"');
     expect(installer).toContain('Usage: atsla [start|stop|status|update|path]');
     expect(installer).toContain('[[ "$INSTALL_VOICE" == "true" ]] || return 0');
+    expect(installer).toContain('node "$electron_dir/install.js"');
+    expect(installer).toContain('npm install --include=dev');
   });
 });

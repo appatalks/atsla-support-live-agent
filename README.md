@@ -1,5 +1,7 @@
 # ATSLA | Support Live Agent
 
+![ATSLA Support Live Agent](docs/atsla-agent.png)
+
 ![ATSLA live support flow](docs/atsla-flow.png)
 
 [Technical guide](README-2.md) | [Demo client](demo-client-folder) | [Issues](https://github.com/appatalks/atsla-support-live-agent/issues)

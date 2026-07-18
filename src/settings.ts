@@ -45,13 +45,21 @@ export interface VoiceBridgeSettings {
   recentClientWorkspaces: string[];
 }
 
-export type AppearanceTheme = "atelier" | "lcars" | "terminal" | "dark";
+export type AppearanceTheme = "atsla" | "atelier" | "lcars" | "terminal" | "dark";
 
 const defaultProfiles: AgentProfile[] = [
   { id: "support", name: "AppaTalks Support Partner", tone: "calm and practical", voiceStyle: "clear and warm", instructions: "You are AppaTalks. ATSLA means AppaTalks Support Live Agent. Prioritize accurate troubleshooting, next steps, and concise summaries." },
   { id: "technical", name: "Technical Specialist", tone: "precise and direct", voiceStyle: "measured and confident", instructions: "Explain technical tradeoffs plainly, identify assumptions, and avoid unsupported certainty." },
   { id: "concierge", name: "Client Concierge", tone: "warm and collaborative", voiceStyle: "friendly and polished", instructions: "Keep the conversation constructive, organized, and focused on the client outcome." },
 ];
+
+const evaVoiceProfile: VoiceProfile = {
+  id: "eva",
+  name: "Eva",
+  instructions: "You are Eva, a warm, curious, and genuine personal AI assistant. Speak like a thoughtful, knowledgeable friend: direct, concise by default, and never corporate or performative. Lead with the useful answer rather than empty affirmations. Do not claim an action happened unless it actually did, do not fabricate facts, and never narrate internal reasoning. Use natural contractions, calm pacing, and a clear conversational voice.",
+  exaggeration: 0.55,
+  cfgWeight: 0.4,
+};
 
 const defaultVoiceProfiles: VoiceProfile[] = [
   {
@@ -61,12 +69,13 @@ const defaultVoiceProfiles: VoiceProfile[] = [
     exaggeration: 0.65,
     cfgWeight: 0.35,
   },
+  evaVoiceProfile,
 ];
 
 export function defaultSettings(): VoiceBridgeSettings {
   return {
-    settingsVersion: 8,
-    appearanceTheme: "atelier",
+    settingsVersion: 9,
+    appearanceTheme: "atsla",
     glassTransparency: 88,
     responseMode: "autonomous",
     defaultInputMode: "agent",
@@ -74,7 +83,7 @@ export function defaultSettings(): VoiceBridgeSettings {
     inputModel: "qwen3-8b",
     copilotModel: "auto",
     voiceProfile: "AppaTalks",
-    voiceProfiles: defaultVoiceProfiles,
+    voiceProfiles: defaultVoiceProfiles.map((profile) => ({ ...profile })),
     activeProfileId: "support",
     clientWorkspace: "",
     globalKnowledgePath: process.env.VOICE_BRIDGE_GLOBAL_KNOWLEDGE_PATH ?? join(homedir(), "Documents", "Voice Bridge Knowledge"),
@@ -132,14 +141,20 @@ export class SettingsStore {
       const stored = JSON.parse(readFileSync(this.settingsPath, "utf8")) as Partial<VoiceBridgeSettings>;
       const preV5 = !stored.settingsVersion || stored.settingsVersion < 5;
       const requiresAppaTalksMigration = isLegacyDefaultVoiceSelection(stored.voiceProfile) || stored.voiceProfiles?.some(isLegacyDefaultVoiceProfile);
-      const requiresMigration = stored.settingsVersion !== 8 || requiresAppaTalksMigration;
+      const requiresMigration = stored.settingsVersion !== 9 || requiresAppaTalksMigration;
       const migrated = requiresMigration
-        ? { ...stored, settingsVersion: 8, ...(preV5 ? { responseMode: "autonomous" as const, defaultInputMode: "agent" as const } : {}) }
+        ? {
+          ...stored,
+          settingsVersion: 9,
+          ...(stored.appearanceTheme === "atelier" ? { appearanceTheme: "atsla" as const } : {}),
+          ...(preV5 ? { responseMode: "autonomous" as const, defaultInputMode: "agent" as const } : {}),
+        }
         : stored;
       const migratedVoiceProfiles = (migrated.voiceProfiles?.length ? migrated.voiceProfiles : defaultVoiceProfiles)
         .map(normalizeVoiceProfile)
         .map(migrateAppaTalksVoiceProfile);
-      for (const profile of migratedVoiceProfiles) {
+      const voiceProfiles = ensureEvaVoiceProfile(migratedVoiceProfiles);
+      for (const profile of voiceProfiles) {
         if (preV5 && profile.id === "appatalks" && !profile.instructions.includes("natural contractions")) {
           profile.instructions += " Use natural contractions, brief thoughtful pauses, varied sentence rhythm, and warm human phrasing without narrating internal reasoning.";
         }
@@ -149,7 +164,7 @@ export class SettingsStore {
         ...migrated,
         voiceProfile: isLegacyDefaultVoiceSelection(migrated.voiceProfile) ? "AppaTalks" : migrated.voiceProfile ?? "AppaTalks",
         profiles: (migrated.profiles?.length ? migrated.profiles : defaultProfiles).map(normalizeProfile).map(migrateAppaTalksAgentProfile),
-        voiceProfiles: migratedVoiceProfiles,
+        voiceProfiles,
       };
       if (requiresMigration) {
         mkdirSync(resolve(this.settingsPath, ".."), { recursive: true });
@@ -324,6 +339,11 @@ function migrateAppaTalksAgentProfile(profile: AgentProfile): AgentProfile {
   };
 }
 
+function ensureEvaVoiceProfile(profiles: VoiceProfile[]): VoiceProfile[] {
+  if (profiles.some((profile) => profile.id === "eva" || profile.name === "Eva")) return profiles;
+  return [...profiles, { ...evaVoiceProfile }];
+}
+
 function isLegacyDefaultVoiceSelection(value: string | undefined): boolean {
   return value === "Atsla" || value === "atsla" || value === "Appatalks";
 }
@@ -353,7 +373,7 @@ function clampTransparency(value: number): number {
 }
 
 function isAppearanceTheme(value: unknown): value is AppearanceTheme {
-  return value === "atelier" || value === "lcars" || value === "terminal" || value === "dark";
+  return value === "atsla" || value === "atelier" || value === "lcars" || value === "terminal" || value === "dark";
 }
 
 function isResponseMode(value: unknown): value is ResponseMode {

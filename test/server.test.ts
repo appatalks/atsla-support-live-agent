@@ -55,6 +55,8 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain("data-settings-tab=\"voice\"");
     expect(dashboard.body).toContain("data-settings-tab=\"appearance\"");
     expect(dashboard.body).toContain("appearanceTheme");
+    expect(dashboard.body).toContain("ATSLA signal");
+    expect(dashboard.body).toContain("theme-atsla");
     expect(dashboard.body).toContain("glassTransparency");
     expect(dashboard.body).toContain("theme-lcars");
     expect(dashboard.body).toContain("theme-terminal");

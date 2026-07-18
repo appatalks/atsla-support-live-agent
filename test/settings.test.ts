@@ -56,6 +56,11 @@ describe("default voice profile", () => {
     expect(appaTalks?.instructions).toContain("AppaTalks, an expert GitHub Reliability Engineer");
     expect(appaTalks?.instructions).toContain("ATSLA means AppaTalks Support Live Agent");
     expect(appaTalks).toMatchObject({ exaggeration: 0.65, cfgWeight: 0.35 });
+    expect(defaults.voiceProfiles.find((profile) => profile.name === "Eva")).toMatchObject({
+      id: "eva",
+      exaggeration: 0.55,
+      cfgWeight: 0.4,
+    });
     expect(defaults.voiceProfile).toBe("AppaTalks");
     expect(defaults.responseMode).toBe("autonomous");
     expect(defaults.defaultInputMode).toBe("agent");
@@ -83,7 +88,7 @@ describe("default voice profile", () => {
       writeFileSync(path, JSON.stringify(legacy), "utf8");
       const migrated = new SettingsStore(path).get();
 
-      expect(migrated.settingsVersion).toBe(8);
+      expect(migrated.settingsVersion).toBe(9);
       expect(migrated.responseMode).toBe("autonomous");
       expect(migrated.defaultInputMode).toBe("agent");
     } finally {
@@ -120,10 +125,30 @@ describe("default voice profile", () => {
     try {
       const path = join(root, "settings.json");
       const store = new SettingsStore(path);
-      expect(store.get()).toMatchObject({ appearanceTheme: "atelier", glassTransparency: 88 });
+      expect(store.get()).toMatchObject({ appearanceTheme: "atsla", glassTransparency: 88 });
 
       store.update({ appearanceTheme: "lcars", glassTransparency: 120 });
       expect(new SettingsStore(path).get()).toMatchObject({ appearanceTheme: "lcars", glassTransparency: 100 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates the prior default theme and adds the Eva voice profile", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-atsla-theme-"));
+    try {
+      const path = join(root, "settings.json");
+      const legacy = {
+        ...defaultSettings(),
+        settingsVersion: 8,
+        appearanceTheme: "atelier",
+        voiceProfiles: defaultSettings().voiceProfiles.filter((profile) => profile.id === "appatalks"),
+      };
+      writeFileSync(path, JSON.stringify(legacy), "utf8");
+
+      const migrated = new SettingsStore(path).get();
+      expect(migrated).toMatchObject({ settingsVersion: 9, appearanceTheme: "atsla" });
+      expect(migrated.voiceProfiles.find((profile) => profile.id === "eva")?.instructions).toContain("warm, curious, and genuine");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -140,7 +140,7 @@ Live-representative requests cancel pending autonomous work and retain an operat
 
 ## Voice Output
 
-The local AppaTalks profile uses Chatterbox speech synthesis. Settings expose per-profile expression (`exaggeration`) and pacing (`cfg_weight`) controls. The original Chatterbox model does not support Turbo paralinguistic tags, so ATSLA uses natural punctuation and wording instead.
+The local AppaTalks profile uses Chatterbox speech synthesis. Settings include an Eva profile that applies Eva's warm, curious, direct conversational style to the currently authorized reference voice; it does not change the audio reference asset. Settings expose per-profile expression (`exaggeration`) and pacing (`cfg_weight`) controls. The original Chatterbox model does not support Turbo paralinguistic tags, so ATSLA uses natural punctuation and wording instead.
 
 Voice output is sent only to the `voice_bridge_agent` sink on Linux. The operator can monitor it through the physical-output loopback.
 
@@ -150,6 +150,7 @@ The **Appearance** settings tab provides four persistent console themes:
 
 | Theme | Intent |
 | --- | --- |
+| ATSLA signal | Default midnight-blue console with cyan, periwinkle, and rose accents drawn from the ATSLA visual identity. |
 | Atelier glass | Default light operational console with translucent panels. |
 | LCARS command | Star Trek-inspired command palette with high-contrast structural color. |
 | Terminal monochrome | Green phosphor terminal styling for dense operational work. |
