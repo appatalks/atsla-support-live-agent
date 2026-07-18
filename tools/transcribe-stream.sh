@@ -14,7 +14,8 @@ usage() {
 Usage: tools/transcribe-stream.sh [--check|--dry-run]
 
 Captures only the Conference Capture monitor source in short 16 kHz mono WAV segments, transcribes
-each segment with whisper.cpp's whisper-cli, and POSTs final text as a remote transcript event.
+each segment with whisper.cpp's whisper-cli, and combines consecutive speech segments into one
+remote transcript event after a below-threshold segment marks the end of the speaker's turn.
 Set WHISPER_MODEL to a local ggml model path. This is a low-latency scaffold, not speaker diarization.
 EOF
 }
@@ -48,7 +49,18 @@ check
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 touch "$WORK_DIR/processed.txt"
-trap 'kill "${CAPTURE_PID:-}" >/dev/null 2>&1 || true' EXIT INT TERM
+pending_text=""
+
+deliver_pending() {
+  [[ -n "${pending_text// }" ]] || return 0
+  local payload
+  payload="$(printf '%s' "$pending_text" | jq -Rs '{speaker:"remote", text:.}')"
+  curl --fail --silent --show-error -X POST "$API_URL/v1/transcripts" -H 'content-type: application/json' -d "$payload" >/dev/null || \
+    echo "Could not deliver transcript to Voice Bridge." >&2
+  pending_text=""
+}
+
+trap 'deliver_pending; kill "${CAPTURE_PID:-}" >/dev/null 2>&1 || true' EXIT INT TERM
 
 ffmpeg -hide_banner -loglevel error -f pulse -i "$SOURCE" -ar 16000 -ac 1 -f segment \
   -segment_time "$SEGMENT_SECONDS" -reset_timestamps 1 -segment_list "$WORK_DIR/segments.csv" \
@@ -66,14 +78,14 @@ while kill -0 "$CAPTURE_PID" >/dev/null 2>&1; do
       grep -qxF "$chunk" "$WORK_DIR/processed.txt" && continue
       if ! has_speech_level "$chunk"; then
         printf '%s\n' "$chunk" >> "$WORK_DIR/processed.txt"
+        deliver_pending
         continue
       fi
       text="$($WHISPER_BIN -m "$WHISPER_MODEL" -f "$chunk" -nt 2>/dev/null | sed '/^$/d' | tr '\n' ' ')"
       printf '%s\n' "$chunk" >> "$WORK_DIR/processed.txt"
-    [[ -n "${text// }" ]] || continue
-    payload="$(printf '%s' "$text" | jq -Rs '{speaker:"remote", text:.}')"
-    curl --fail --silent --show-error -X POST "$API_URL/v1/transcripts" -H 'content-type: application/json' -d "$payload" >/dev/null || \
-      echo "Could not deliver transcript to Voice Bridge." >&2
+      text="$(printf '%s' "$text" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
+      [[ -n "$text" ]] || continue
+      pending_text="${pending_text:+$pending_text }$text"
     done < "$WORK_DIR/segments.csv"
   fi
   read -r -t 0.25 _ || true

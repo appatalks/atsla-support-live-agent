@@ -17,6 +17,7 @@ describe("client knowledge isolation", () => {
       const globalRoot = join(root, "global-knowledge");
       mkdirSync(globalRoot, { recursive: true });
       writeFileSync(join(globalRoot, "shared.md"), "GLOBAL_SHARED_RUNBOOK", "utf8");
+      writeFileSync(join(globalRoot, "GLOBAL-GUARDRAILS.md"), "GLOBAL_GUARDRAIL_NEVER_DISCLOSE_SECRETS", "utf8");
       const settingsStore = new SettingsStore(join(root, "settings.json"));
       settingsStore.update({ globalKnowledgePath: globalRoot, globalKnowledgeEnabled: true, retainSessionLearnings: true });
       const workspace = new ClientWorkspace(clientsRoot);
@@ -32,14 +33,21 @@ describe("client knowledge isolation", () => {
 
       const clientA = coordinator.selectClientWorkspace({ name: "Client A" }).clientWorkspace;
       writeFileSync(join(clientA, "knowledge", "private.md"), "CLIENT_A_PRIVATE", "utf8");
+      writeFileSync(join(clientA, "context-drop", "CONTEXT-GUARDRAILS.md"), "CLIENT_A_GUARDRAIL_DO_NOT_DISCUSS_PRICING", "utf8");
+      writeFileSync(join(clientA, "context-drop", "accounts.csv"), "account,region\nCONTEXT_DROP_CLIENT_A,east\n", "utf8");
       writeFileSync(join(clientA, "meetings", "old.transcript.md"), "MEETING_LOG_MUST_NOT_LOAD", "utf8");
       const sessionA = await coordinator.createSession({ title: "Client A review" });
       coordinator.loadClientContext();
       await coordinator.ingest({ id: "a1", speaker: "remote", text: "Client A uses region east.", occurredAt: new Date().toISOString() });
       await coordinator.respondToConversation("What context is active?");
-      expect(prompts.at(-1)).toContain("CLIENT_A_PRIVATE");
-      expect(prompts.at(-1)).toContain("GLOBAL_SHARED_RUNBOOK");
-      expect(prompts.at(-1)).not.toContain("MEETING_LOG_MUST_NOT_LOAD");
+      const clientAPrompt = prompts.at(-1)!;
+      expect(clientAPrompt).toContain("CLIENT_A_PRIVATE");
+      expect(clientAPrompt).toContain("CONTEXT_DROP_CLIENT_A");
+      expect(clientAPrompt).toContain("CLIENT_A_GUARDRAIL_DO_NOT_DISCUSS_PRICING");
+      expect(clientAPrompt).toContain("GLOBAL_SHARED_RUNBOOK");
+      expect(clientAPrompt).toContain("GLOBAL_GUARDRAIL_NEVER_DISCLOSE_SECRETS");
+      expect(clientAPrompt.indexOf("GLOBAL_GUARDRAIL_NEVER_DISCLOSE_SECRETS")).toBeLessThan(clientAPrompt.indexOf("CLIENT_A_GUARDRAIL_DO_NOT_DISCUSS_PRICING"));
+      expect(clientAPrompt).not.toContain("MEETING_LOG_MUST_NOT_LOAD");
       const learningPath = join(clientA, "learnings", `${sessionA.id}.observations.md`);
       expect(existsSync(learningPath)).toBe(true);
       expect(readFileSync(learningPath, "utf8")).toContain("Client A uses region east");
@@ -50,7 +58,9 @@ describe("client knowledge isolation", () => {
       expect(coordinator.contextStatus().client.loaded).toBe(false);
       await coordinator.respondToConversation("What context is active now?");
       expect(prompts.at(-1)).toContain("GLOBAL_SHARED_RUNBOOK");
+      expect(prompts.at(-1)).toContain("GLOBAL_GUARDRAIL_NEVER_DISCLOSE_SECRETS");
       expect(prompts.at(-1)).not.toContain("CLIENT_A_PRIVATE");
+      expect(prompts.at(-1)).not.toContain("CLIENT_A_GUARDRAIL_DO_NOT_DISCUSS_PRICING");
       expect(prompts.at(-1)).not.toContain("CLIENT_B_PRIVATE");
 
       coordinator.loadClientContext();
@@ -80,6 +90,30 @@ describe("client knowledge isolation", () => {
         new ClientWorkspace(join(root, "clients")),
       );
       expect(() => coordinator.selectClientWorkspace({ name: "Client A" })).toThrow(/separate, non-overlapping/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("scaffolds bulk context guardrails for the persisted selected workspace on startup", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-startup-workspace-"));
+    try {
+      const client = join(root, "existing-client");
+      mkdirSync(client, { recursive: true });
+      writeFileSync(join(client, "client-profile.json"), JSON.stringify({ name: "Existing Client" }), "utf8");
+      const settingsStore = new SettingsStore(join(root, "settings.json"));
+      settingsStore.update({ clientWorkspace: client, globalKnowledgeEnabled: false });
+
+      new MeetingCoordinator(
+        { id: "local-qwen", complete: async () => ({ text: "ok", provider: "local-qwen", model: "test" }) },
+        new ResponsePolicy("approval"),
+        new DraftStore(),
+        new SimulatedSpeechOutput(),
+        settingsStore,
+        new ClientWorkspace(join(root, "clients")),
+      );
+
+      expect(existsSync(join(client, "context-drop", "CONTEXT-GUARDRAILS.md"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

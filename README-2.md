@@ -57,7 +57,7 @@ On macOS, configure a virtual output device such as BlackHole and set `VOICE_BRI
 
 ## Transcription
 
-The segment runner captures `voice_bridge_conference.monitor` into four-second, 16 kHz mono WAV files. A volume gate skips silent input before local Whisper processing; semantic non-speech events such as silence, throat clearing, or punctuation-only transcripts are documented without model generation or speech.
+The segment runner captures `voice_bridge_conference.monitor` into four-second, 16 kHz mono WAV files. A volume gate skips silent input before local Whisper processing. Consecutive speech segments are combined and posted as one remote turn when the next below-threshold segment marks a pause, keeping the conversation timeline and model context aligned with natural utterances. Semantic non-speech events such as silence, throat clearing, or punctuation-only transcripts are documented without model generation or speech.
 
 ```bash
 npm run whisper:bootstrap:dry-run
@@ -90,6 +90,23 @@ When enabled, remote observations and generated summaries are stored under the s
 
 Global documentation is separate from client data. Configure it in **Settings** and keep its root distinct from every client workspace.
 
+### Bulk Context And Guardrails
+
+New workspaces include `context-drop/`, an operator-friendly bulk import area. ATSLA recursively reads reviewed `.md`, `.txt`, `.json`, `.csv`, `.yaml`, and `.yml` files there after the operator explicitly loads the selected client context. It does not inspect `meetings/`, and it does not load a client workspace merely because it is selected.
+
+Use `context-drop/CONTEXT-GUARDRAILS.md` for client-specific policy. Write clear sections for **May Discuss**, **Sensitive Or Restricted**, and **Required Behavior**. Describe what to decline, what to escalate, and the safe alternative to provide. This file is loaded before the client reference material.
+
+For organization-wide policy, create `GLOBAL-GUARDRAILS.md` at the root of the Global shared knowledge folder. Use [docs/GLOBAL-GUARDRAILS.template.md](docs/GLOBAL-GUARDRAILS.template.md) as a starting point. Global guardrails are included for every session and take precedence over client guardrails. Reference files cannot override either level.
+
+Best practices:
+
+- Keep each file focused, short, and reviewed; use descriptive filenames and headings.
+- Put public product facts and support procedures in normal reference files; put disclosure limits in guardrail files.
+- Prefer data extracts that omit credentials, unnecessary personal data, and raw production exports.
+- State an escalation path for authorization, pricing, legal, security, and account-specific requests.
+- Review `learnings/` before promoting observations into durable client reference material.
+- Keep real client folders outside the git repository. The committed `demo-client-folder/` is fictional and safe to use for evaluation.
+
 ## Provider Isolation
 
 Local Qwen receives only the current request transcript and explicit application context. GitHub Copilot CLI is launched through `tools/copilot-no-memory.sh` and `tools/stateless_acp_bridge.py`:
@@ -116,6 +133,19 @@ Live-representative requests cancel pending autonomous work and retain an operat
 The local AppaTalks profile uses Chatterbox speech synthesis. Settings expose per-profile expression (`exaggeration`) and pacing (`cfg_weight`) controls. The original Chatterbox model does not support Turbo paralinguistic tags, so ATSLA uses natural punctuation and wording instead.
 
 Voice output is sent only to the `voice_bridge_agent` sink on Linux. The operator can monitor it through the physical-output loopback.
+
+## Console Appearance
+
+The **Appearance** settings tab provides four persistent console themes:
+
+| Theme | Intent |
+| --- | --- |
+| Atelier glass | Default light operational console with translucent panels. |
+| LCARS command | Star Trek-inspired command palette with high-contrast structural color. |
+| Terminal monochrome | Green phosphor terminal styling for dense operational work. |
+| Dark operations | Restrained dark console for low-light environments. |
+
+Use **Glass transparency** to balance the layered background against dense text. Theme and transparency changes preview immediately and are saved with the operator settings. The settings drawer is organized into **Workspace**, **Agent**, **Voice**, and **Appearance** tabs.
 
 ## HTTP API
 

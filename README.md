@@ -4,6 +4,8 @@ ATSLA is a local, operator-controlled AI support agent for live customer convers
 
 It is designed for conversations in Microsoft Teams, Zoom, Slack, browser calls, and other communication tools that can use standard system audio devices. The agent runs locally: transcription, reasoning, session control, and voice output remain on the operator's machine.
 
+![ATSLA live support flow](docs/atsla-flow.png)
+
 ## What It Does
 
 - Keeps a distinct session history for each client workspace.
@@ -50,6 +52,16 @@ For simulated development without live call routing:
 npm run simulate
 npm start
 ```
+
+## Demo Client And Guardrails
+
+Open [demo-client-folder](demo-client-folder) from the **Client workspace** panel to try the full client-context workflow with fictional data. The demo includes a bulk data drop, an account CSV, product reference material, and a client guardrail file.
+
+Every client workspace now includes a `context-drop/` folder. Bulk-drop reviewed `.md`, `.txt`, `.json`, `.csv`, `.yaml`, or `.yml` files there, then select **Load context** in ATSLA to make that client's context available. Maintain `context-drop/CONTEXT-GUARDRAILS.md` to describe approved topics, sensitive material, avoided topics, escalation conditions, and safe alternatives.
+
+Global rules apply across every session. Copy [docs/GLOBAL-GUARDRAILS.template.md](docs/GLOBAL-GUARDRAILS.template.md) into the root of your configured Global shared knowledge folder as `GLOBAL-GUARDRAILS.md` and tailor it to your organization.
+
+Guardrails are loaded ahead of reference material. Global guardrails take precedence over client guardrails; client guardrails take precedence over bulk-dropped and other reference files.
 
 ## Privacy And Safety
 

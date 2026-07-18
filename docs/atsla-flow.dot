@@ -1,0 +1,22 @@
+digraph ATSLA {
+  graph [bgcolor="#f4f1e8", pad="0.28", rankdir=LR, nodesep="0.42", ranksep="0.68", fontname="Manrope"];
+  node [shape=box, style="rounded,filled", color="#1d5546", fillcolor="#fffdf8", fontcolor="#17221f", fontname="Manrope", fontsize=13, margin="0.16,0.1"];
+  edge [color="#607069", penwidth=1.5, arrowsize=0.75];
+
+  call [label="Live call\nTeams, Zoom, Slack, browser"];
+  audio [label="PipeWire audio bridge\nconference capture + agent mic", fillcolor="#dcecf0"];
+  whisper [label="Local Whisper\nremote transcript", fillcolor="#dcecf0"];
+  operator [label="ATSLA operator console\nclient, mode, approval, takeover", fillcolor="#dce8c9"];
+  guardrails [label="Global guardrails\n+ client CONTEXT-GUARDRAILS.md", fillcolor="#f7e1d7", color="#b84f2f"];
+  context [label="Explicitly loaded context\ncontext-drop, knowledge, skills", fillcolor="#f7e1d7", color="#b84f2f"];
+  reasoning [label="Local Qwen or isolated\nCopilot ACP reasoning", fillcolor="#dce8c9"];
+  voice [label="AppaTalks voice\nprewarmed greeting cache", fillcolor="#dce8c9"];
+
+  call -> audio -> whisper -> operator;
+  operator -> reasoning [label=" approved / autonomous "];
+  guardrails -> reasoning;
+  context -> reasoning;
+  reasoning -> voice -> audio;
+  operator -> guardrails [style=dashed, label=" selects client "];
+  operator -> context [style=dashed, label=" Load context "];
+}

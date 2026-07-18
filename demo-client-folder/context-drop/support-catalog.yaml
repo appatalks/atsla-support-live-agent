@@ -1,0 +1,7 @@
+product: Northwind Signal
+public_support_hours: "Monday-Friday, 08:00-18:00 UTC"
+approved_topics:
+  - status-dashboard
+  - user-invitations
+  - alert-routing
+safe_next_step: "Capture the observed behavior, time window, and affected account name for the operator."

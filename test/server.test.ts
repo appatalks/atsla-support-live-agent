@@ -48,6 +48,17 @@ describe("HTTP control plane", () => {
     expect(dashboard.headers["content-type"]).toContain("text/html");
     expect(dashboard.body).toContain("ATSLA | Support Live Agent");
     expect(dashboard.body).toContain("AppaTalks");
+    expect(dashboard.body).toContain("Open folder");
+    expect(dashboard.body).toContain("context-drop");
+    expect(dashboard.body).toContain("data-settings-tab=\"workspace\"");
+    expect(dashboard.body).toContain("data-settings-tab=\"agent\"");
+    expect(dashboard.body).toContain("data-settings-tab=\"voice\"");
+    expect(dashboard.body).toContain("data-settings-tab=\"appearance\"");
+    expect(dashboard.body).toContain("appearanceTheme");
+    expect(dashboard.body).toContain("glassTransparency");
+    expect(dashboard.body).toContain("theme-lcars");
+    expect(dashboard.body).toContain("theme-terminal");
+    expect(dashboard.body).toContain("theme-dark");
     expect(dashboard.body).toContain("input-mode.active");
     expect(dashboard.body).toContain("Live representative requested");
     expect(dashboard.body).toContain("Take over");

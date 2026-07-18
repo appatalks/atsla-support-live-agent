@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ describe("client workspace", () => {
 
   afterEach(() => folders.splice(0).forEach((folder) => rmSync(folder, { recursive: true, force: true })));
 
-  it("creates a client knowledge, skills, and meeting-log structure", () => {
+  it("creates a client knowledge, bulk-context, guardrail, skills, and meeting-log structure", () => {
     const root = mkdtempSync(join(tmpdir(), "voice-bridge-client-"));
     folders.push(root);
     const workspace = new ClientWorkspace(root);
@@ -18,7 +18,11 @@ describe("client workspace", () => {
     expect(existsSync(join(folder, "client-profile.json"))).toBe(true);
     expect(existsSync(join(folder, "knowledge", "README.md"))).toBe(true);
     expect(existsSync(join(folder, "skills", "README.md"))).toBe(true);
+    expect(existsSync(join(folder, "context-drop", "README.md"))).toBe(true);
+    expect(existsSync(join(folder, "context-drop", "CONTEXT-GUARDRAILS.md"))).toBe(true);
     expect(existsSync(join(folder, "meetings"))).toBe(true);
+    const global = workspace.prepareGlobalKnowledge(join(root, "global"));
+    expect(existsSync(join(global, "GLOBAL-GUARDRAILS.md"))).toBe(true);
 
     workspace.appendTranscript(folder, "- Remote: The client needs help.");
     const profile = JSON.parse(readFileSync(join(folder, "client-profile.json"), "utf8"));
@@ -28,6 +32,20 @@ describe("client workspace", () => {
     const summaryPath = workspace.appendSummary(folder, "The team agreed on the next step.");
     expect(summaryPath).toBe(join(folder, "meetings", `${new Date().toISOString().slice(0, 10)}.summary.md`));
     expect(workspace.latestSummary(folder)).toBe(summaryPath);
+  });
+
+  it("adds bulk-context guardrails to an existing client workspace", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-existing-client-"));
+    folders.push(root);
+    const folder = join(root, "Existing Client");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "client-profile.json"), JSON.stringify({ name: "Existing Client" }), "utf8");
+    const workspace = new ClientWorkspace(root);
+
+    workspace.select({ path: folder });
+
+    expect(existsSync(join(folder, "context-drop", "README.md"))).toBe(true);
+    expect(readFileSync(join(folder, "context-drop", "CONTEXT-GUARDRAILS.md"), "utf8")).toContain("Sensitive Or Restricted");
   });
 });
 
@@ -65,7 +83,7 @@ describe("default voice profile", () => {
       writeFileSync(path, JSON.stringify(legacy), "utf8");
       const migrated = new SettingsStore(path).get();
 
-      expect(migrated.settingsVersion).toBe(7);
+      expect(migrated.settingsVersion).toBe(8);
       expect(migrated.responseMode).toBe("autonomous");
       expect(migrated.defaultInputMode).toBe("agent");
     } finally {
@@ -92,6 +110,20 @@ describe("default voice profile", () => {
       const persisted = JSON.parse(readFileSync(path, "utf8"));
       expect(persisted.voiceProfile).toBe("AppaTalks");
       expect(persisted.voiceProfiles[0]).toMatchObject({ id: "appatalks", name: "AppaTalks" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a selectable theme and clamps glass transparency", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-appearance-"));
+    try {
+      const path = join(root, "settings.json");
+      const store = new SettingsStore(path);
+      expect(store.get()).toMatchObject({ appearanceTheme: "atelier", glassTransparency: 88 });
+
+      store.update({ appearanceTheme: "lcars", glassTransparency: 120 });
+      expect(new SettingsStore(path).get()).toMatchObject({ appearanceTheme: "lcars", glassTransparency: 100 });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
