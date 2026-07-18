@@ -76,9 +76,12 @@ start() {
 
   local python="$ROOT_DIR/vendor/voice_clone_module/.venv/bin/python"
   local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/vendor/voice_clone_module/voices/appatalks.wav}"
+  local eva_reference="${EVA_VOICE_REFERENCE:-$ROOT_DIR/assets/voices/eva-voice.wav}"
+  local greeting_seed="$ROOT_DIR/assets/prewarmed/appatalks-standard-greeting.wav"
+  local greeting_seed_reference_sha256="92ad8aa65c4237a1999a65ab775731088af46831fc94e6944ec92b1887c93fbf"
   local standard_greeting="Hi, I am AppaTalks, your AI support agent. I can help with support questions and next steps. If you would like a live representative, say Live Representative Please and I will notify one. How can I help today?"
   launch qwen env VOICE_BRIDGE_QWEN_MODEL="${VOICE_BRIDGE_QWEN_MODEL:-qwen3-8b}" VOICE_CLONE_DEVICE="${VOICE_CLONE_DEVICE:-auto}" "$python" "$ROOT_DIR/tools/qwen_bridge.py"
-  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
+  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --eva-reference "$eva_reference" --seed-audio "$greeting_seed" --seed-reference-sha256 "$greeting_seed_reference_sha256" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
 
   local acp_script="${EVA_ACP_BRIDGE_SCRIPT:-$ROOT_DIR/../eva-agent/tools/acp_bridge.py}"
   if [[ -f "$acp_script" ]] && command -v copilot >/dev/null 2>&1; then

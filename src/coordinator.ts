@@ -385,6 +385,7 @@ export class MeetingCoordinator {
     return this.speech.dispatch(draft, {
       exaggeration: voiceProfile?.exaggeration,
       cfgWeight: voiceProfile?.cfgWeight,
+      profileId: voiceProfile?.id,
     });
   }
 

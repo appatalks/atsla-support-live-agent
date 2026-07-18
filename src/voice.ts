@@ -15,6 +15,7 @@ export interface SpeechDispatch {
 export interface SpeechOptions {
   exaggeration?: number;
   cfgWeight?: number;
+  profileId?: string;
 }
 
 export interface SpeechOutput {
@@ -57,7 +58,7 @@ export class LocalVoiceBridgeOutput extends SimulatedSpeechOutput {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight }),
+      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) {
       throw new Error(`Local voice bridge request failed with HTTP ${response.status}.`);
@@ -85,7 +86,7 @@ export class PipeWireVoiceOutput extends SimulatedSpeechOutput {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight }),
+      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) throw new Error(`Local voice bridge request failed with HTTP ${response.status}.`);
     const audio = Buffer.from(await response.arrayBuffer());
@@ -129,7 +130,7 @@ export class MacVoiceOutput extends SimulatedSpeechOutput {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight }),
+      body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) throw new Error(`Local voice bridge request failed with HTTP ${response.status}.`);
     const path = join(tmpdir(), `voice-bridge-${randomUUID()}.wav`);

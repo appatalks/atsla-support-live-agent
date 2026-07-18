@@ -62,8 +62,8 @@ describe("voice expression controls", () => {
     const reply = await new SimulationProvider().complete({ transcript: [], question: "Status?" });
     const draft = new DraftStore().create("Status?", reply, "authorized");
 
-    await output.dispatch(draft, { exaggeration: 0.7, cfgWeight: 0.3 });
-    expect(payload).toMatchObject({ exaggeration: 0.7, cfg_weight: 0.3 });
+    await output.dispatch(draft, { exaggeration: 0.7, cfgWeight: 0.3, profileId: "eva" });
+    expect(payload).toMatchObject({ exaggeration: 0.7, cfg_weight: 0.3, voice_profile: "eva" });
   });
 });
 

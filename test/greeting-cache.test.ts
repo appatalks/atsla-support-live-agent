@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { STANDARD_GREETING } from "../src/domain.js";
@@ -12,6 +12,10 @@ describe("AppaTalks Standard Greeting cache", () => {
     expect(supervisor).toContain(`local standard_greeting="${STANDARD_GREETING}"`);
     expect(supervisor).toContain("--warm-text \"$standard_greeting\"");
     expect(supervisor).toContain("--warm-exaggeration 0.65 --warm-cfg-weight 0.35");
+    expect(supervisor).toContain("--eva-reference \"$eva_reference\"");
+    expect(supervisor).toContain("--seed-audio \"$greeting_seed\"");
+    expect(existsSync(`${root}/assets/prewarmed/appatalks-standard-greeting.wav`)).toBe(true);
+    expect(existsSync(`${root}/assets/voices/eva-voice.wav`)).toBe(true);
   });
 
   it("persists only warmed greeting audio and keys it to the reference and expression settings", () => {
@@ -19,5 +23,8 @@ describe("AppaTalks Standard Greeting cache", () => {
     expect(bridge).toContain("if cache_path and cache_path.is_file()");
     expect(bridge).toContain('"reference_mtime_ns"');
     expect(bridge).toContain("self.warm_texts.add(text)");
+    expect(bridge).toContain('"voice_profiles"');
+    expect(bridge).toContain('profile_id == "appatalks"');
+    expect(bridge).toContain("seed_reference_sha256");
   });
 });
