@@ -30,12 +30,7 @@ function createWindow() {
     height: 1120,
     minWidth: 1280,
     minHeight: 800,
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#03072b",
-      symbolColor: "#eaf3ff",
-      height: 36,
-    },
+    autoHideMenuBar: true,
     backgroundColor: "#03072b",
     webPreferences: {
       contextIsolation: true,
@@ -44,6 +39,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
     },
   });
+  window.setMenuBarVisibility(false);
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
