@@ -1,0 +1,350 @@
+import { randomUUID } from "node:crypto";
+import { responseTemplates, type AgentActivity, type ChatProvider, type Draft, type EscalationRequest, type LocalModelId, type MeetingSession, type MeetingSessionSummary, type ModelReply, type ResponseMode, type SessionTelemetry, type TranscriptEvent } from "./domain.js";
+import { DraftStore, ResponsePolicy } from "./policy.js";
+import { type VoiceBridgeSettings, ClientWorkspace, SettingsStore, defaultSettings } from "./settings.js";
+import { type SpeechDispatch, type SpeechOutput } from "./voice.js";
+import { SessionStore } from "./session-store.js";
+
+export class MeetingCoordinator {
+  private readonly transcript: TranscriptEvent[] = [];
+  private readonly activity: AgentActivity[] = [];
+  private readonly escalations: EscalationRequest[] = [];
+  private lastAutonomousReplyAt = 0;
+  private autonomousInFlight = false;
+  private autonomousTimer: NodeJS.Timeout | undefined;
+  private responseEpoch = 0;
+  private settings: VoiceBridgeSettings;
+  private activeSession: MeetingSession | undefined;
+  private readonly telemetry: SessionTelemetry = {
+    startedAt: new Date().toISOString(),
+    requests: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    measuredRequests: 0,
+    generationSeconds: 0,
+    averageTokensPerSecond: null,
+    usageAvailable: false,
+    lastModel: "",
+    lastProvider: "",
+  };
+
+  constructor(
+    private readonly provider: ChatProvider,
+    private readonly policy: ResponsePolicy,
+    private readonly drafts: DraftStore,
+    private readonly speech: SpeechOutput,
+    private readonly settingsStore?: SettingsStore,
+    private readonly workspace = new ClientWorkspace(),
+    private readonly sessionStore?: SessionStore,
+  ) {
+    this.settings = settingsStore?.get() ?? { ...defaultSettings(), responseMode: this.policy.getMode() };
+    this.policy.setMode(this.settings.responseMode);
+  }
+
+  async ingest(event: TranscriptEvent): Promise<void> {
+    this.transcript.push(event);
+    if (this.transcript.length > 80) this.transcript.shift();
+    this.record("listening", `${event.speaker === "remote" ? "Heard" : "Received"}: ${event.text}`);
+    if (event.speaker === "remote" && await this.detectEscalation()) {
+      this.persistSession();
+      return;
+    }
+    if (event.speaker === "remote" && this.settings.saveMeetingLog) {
+      this.workspace.appendTranscript(this.settings.clientWorkspace, `- ${event.occurredAt} Remote: ${event.text}`);
+    }
+    if (event.speaker === "remote" && this.shouldReplyAutonomously(event.text)) {
+      if (/\b(agent|assistant|eva)\b/i.test(event.text)) await this.autonomousReply();
+      else this.scheduleAutonomousReply();
+    }
+    this.persistSession();
+  }
+
+  async draft(question: string): Promise<{ draft: Draft; dispatch?: SpeechDispatch }> {
+    const epoch = this.responseEpoch;
+    this.record("thinking", "Preparing a response.");
+    const reply = await this.provider.complete({ transcript: this.transcript, question: this.enrichQuestion(question) });
+    this.recordUsage(reply);
+    if (epoch !== this.responseEpoch || this.escalations.some((item) => item.status === "pending")) {
+      const draft = this.drafts.create(question, reply, "dismissed");
+      this.record("stopped", "Generated reply discarded because operator intervention is active.", draft.id);
+      this.persistSession();
+      return { draft };
+    }
+    const draft = this.drafts.create(question, reply, this.policy.disposition(question));
+    const dispatch = draft.disposition === "authorized" ? await this.speak(draft) : undefined;
+    if (!dispatch) this.record("pending", "Response is ready for your review.", draft.id);
+    this.persistSession();
+    return { draft, dispatch };
+  }
+
+  async authorize(draftId: string): Promise<{ draft: Draft; dispatch: SpeechDispatch }> {
+    const draft = this.drafts.authorize(draftId);
+    const result = { draft, dispatch: await this.speak(draft) };
+    this.persistSession();
+    return result;
+  }
+
+  dismiss(draftId: string): Draft {
+    const draft = this.drafts.dismiss(draftId);
+    this.record("stopped", "Proposed reply dismissed by the operator.", draft.id);
+    this.persistSession();
+    return draft;
+  }
+
+  setMode(mode: ResponseMode): void {
+    this.policy.setMode(mode);
+    this.updateSettings({ responseMode: mode });
+  }
+
+  getSettings(): VoiceBridgeSettings {
+    return structuredClone(this.settings);
+  }
+
+  updateSettings(partial: Partial<VoiceBridgeSettings>): VoiceBridgeSettings {
+    this.settings = this.settingsStore?.update(partial) ?? { ...this.settings, ...partial };
+    this.policy.setMode(this.settings.responseMode);
+    const provider = this.provider as ChatProvider & {
+      setProvider?: (provider: "local-qwen" | "copilot-acp") => void;
+      setModelKey?: (modelKey: LocalModelId) => void;
+      setCopilotModel?: (model: string) => void;
+    };
+    provider.setProvider?.(this.settings.modelProvider);
+    provider.setCopilotModel?.(this.settings.copilotModel);
+    if (provider.setModelKey && this.settings.inputModel in { "qwen3-8b": true, "qwen2.5-7b": true, "qwen2.5-1.5b": true, "qwen3-0.6b": true }) {
+      provider.setModelKey(this.settings.inputModel as LocalModelId);
+    }
+    if (this.settings.clientWorkspace) this.settings.clientWorkspace = this.workspace.select({ path: this.settings.clientWorkspace });
+    return this.getSettings();
+  }
+
+  selectClientWorkspace(request: { path?: string; name?: string }): VoiceBridgeSettings {
+    const clientWorkspace = this.workspace.select(request);
+    return this.updateSettings({ clientWorkspace, recentClientWorkspaces: [clientWorkspace, ...this.settings.recentClientWorkspaces.filter((folder) => folder !== clientWorkspace)] });
+  }
+
+  async speakTemplate(text: string): Promise<{ draft: Draft; dispatch: SpeechDispatch }> {
+    const cleanText = text.trim();
+    if (!cleanText) throw new Error("Template text is required.");
+    const reply: ModelReply = { text: cleanText, provider: "local-qwen", model: "operator-template" };
+    const draft = this.drafts.create("Operator template", reply, "authorized");
+    const result = { draft, dispatch: await this.speak(draft) };
+    this.persistSession();
+    return result;
+  }
+
+  async createSession(request: { title?: string; clientWorkspace?: string; sendGreeting?: boolean }): Promise<MeetingSession> {
+    if (!this.sessionStore) throw new Error("Session persistence is unavailable.");
+    this.persistSession();
+    this.resetConversation();
+    const clientWorkspace = request.clientWorkspace?.trim() || this.settings.clientWorkspace;
+    this.activeSession = this.sessionStore.create(request.title, clientWorkspace);
+    if (clientWorkspace) this.updateSettings({ clientWorkspace });
+    this.record("listening", `Session started: ${this.activeSession.title}`);
+    this.persistSession();
+    if (request.sendGreeting !== false) {
+      const greeting = responseTemplates.find((template) => template.id === "standard-greeting")!;
+      try {
+        await this.speakTemplate(greeting.text);
+        this.activeSession.greetingSent = true;
+        this.persistSession();
+      } catch (error) {
+        this.record("error", error instanceof Error ? error.message : "Session greeting failed.");
+        this.persistSession();
+      }
+    }
+    return structuredClone(this.activeSession);
+  }
+
+  selectSession(sessionId: string): MeetingSession {
+    if (!this.sessionStore) throw new Error("Session persistence is unavailable.");
+    this.persistSession();
+    this.resetConversation();
+    const session = this.sessionStore.get(sessionId);
+    this.activeSession = structuredClone(session);
+    this.transcript.push(...structuredClone(session.transcript));
+    this.activity.push(...structuredClone(session.activity));
+    this.escalations.push(...structuredClone(session.escalations));
+    this.drafts.replace(session.drafts);
+    if (session.clientWorkspace) this.updateSettings({ clientWorkspace: session.clientWorkspace });
+    this.record("listening", `Continued session: ${session.title}`);
+    this.persistSession();
+    return structuredClone(this.activeSession);
+  }
+
+  listSessions(): MeetingSessionSummary[] {
+    return this.sessionStore?.list() ?? [];
+  }
+
+  activeSessionInfo(): { id: string; title: string } | null {
+    return this.activeSession ? { id: this.activeSession.id, title: this.activeSession.title } : null;
+  }
+
+  async summarizeMeeting(): Promise<{ text: string; path: string }> {
+    const reply = await this.provider.complete({
+      transcript: this.transcript,
+      question: this.enrichQuestion("Summarize the current meeting in concise bullets: decisions, open questions, and next steps."),
+    });
+    this.recordUsage(reply);
+    const path = this.settings.summarizeMeeting ? this.workspace.appendSummary(this.settings.clientWorkspace, reply.text) : "";
+    this.record("thinking", "Meeting summary updated.");
+    return { text: reply.text, path };
+  }
+
+  workspaceStatus(): { clientWorkspace: string; latestSummary: string } {
+    return {
+      clientWorkspace: this.settings.clientWorkspace,
+      latestSummary: this.workspace.latestSummary(this.settings.clientWorkspace),
+    };
+  }
+
+  acknowledgeEscalation(escalationId: string): EscalationRequest {
+    const escalation = this.escalations.find((item) => item.id === escalationId);
+    if (!escalation) throw new Error("Escalation request was not found.");
+    escalation.status = "acknowledged";
+    this.record("stopped", "Live representative request acknowledged.");
+    this.persistSession();
+    return escalation;
+  }
+
+  state(): { mode: ResponseMode; transcript: TranscriptEvent[]; drafts: Draft[]; speech: SpeechDispatch[]; activity: AgentActivity[]; escalations: EscalationRequest[]; telemetry: SessionTelemetry } {
+    return {
+      mode: this.policy.getMode(),
+      transcript: [...this.transcript],
+      drafts: this.drafts.list(),
+      speech: this.speech.history(),
+      activity: [...this.activity].reverse(),
+      escalations: [...this.escalations].reverse(),
+      telemetry: structuredClone(this.telemetry),
+    };
+  }
+
+  stopSpeech(): void {
+    this.speech.cancelAll();
+    this.record("stopped", "Speech stopped by the operator.");
+  }
+
+  async respondToConversation(instruction: string): Promise<{ draft: Draft; dispatch?: SpeechDispatch }> {
+    const prompt = instruction.trim() || "Respond to the current conversation directly in one concise sentence.";
+    return this.draft(prompt);
+  }
+
+  private shouldReplyAutonomously(text: string): boolean {
+    if (this.policy.getMode() !== "autonomous" || this.autonomousInFlight) return false;
+    if (Date.now() - this.lastAutonomousReplyAt < 12_000) return false;
+    if (this.escalations.some((item) => item.status === "pending")) return false;
+    return text.trim().length >= 3;
+  }
+
+  private async detectEscalation(): Promise<boolean> {
+    const recentText = this.transcript
+      .filter((event) => event.speaker === "remote")
+      .slice(-3)
+      .map((event) => event.text)
+      .join(" ");
+    if (!/\b(live\s+(representative|agent)|human\s+(representative|agent)|real\s+person|representative\s+please)\b/i.test(recentText)) return false;
+    if (this.escalations.some((item) => item.status === "pending")) return true;
+    this.responseEpoch += 1;
+    if (this.autonomousTimer) {
+      clearTimeout(this.autonomousTimer);
+      this.autonomousTimer = undefined;
+    }
+    this.stopSpeech();
+    this.escalations.push({ id: randomUUID(), text: recentText, createdAt: new Date().toISOString(), status: "pending" });
+    if (this.escalations.length > 20) this.escalations.shift();
+    this.record("error", "Live representative requested. Operator intervention required.");
+    const handoffText = "Absolutely. I'm notifying a live representative now. Please hold for just a moment.";
+    try {
+      await this.speakTemplate(handoffText);
+    } catch (error) {
+      this.record("error", error instanceof Error ? error.message : "Live representative acknowledgement failed.");
+    }
+    return true;
+  }
+
+  private scheduleAutonomousReply(): void {
+    if (this.autonomousTimer) clearTimeout(this.autonomousTimer);
+    this.record("thinking", "Waiting for the current speaker to finish.");
+    this.autonomousTimer = setTimeout(() => {
+      this.autonomousTimer = undefined;
+      void this.autonomousReply();
+    }, this.settings.autonomyDelayMs);
+  }
+
+  private async autonomousReply(): Promise<void> {
+    this.autonomousInFlight = true;
+    this.lastAutonomousReplyAt = Date.now();
+    try {
+      await this.draft("Respond to the most recent remote turn only when a helpful contribution is appropriate. Keep the response to one concise sentence.");
+    } catch (error) {
+      this.record("error", error instanceof Error ? error.message : "Autonomous response failed.");
+    } finally {
+      this.autonomousInFlight = false;
+    }
+  }
+
+  private async speak(draft: Draft): Promise<SpeechDispatch> {
+    this.record("speaking", "Speaking through the selected call microphone.", draft.id);
+    if (this.settings.saveMeetingLog) {
+      this.workspace.appendTranscript(this.settings.clientWorkspace, `- ${new Date().toISOString()} Agent: ${draft.reply.text}`);
+    }
+    const voiceProfile = this.settings.voiceProfiles.find((item) => item.name === this.settings.voiceProfile || item.id === this.settings.voiceProfile.toLowerCase()) ?? this.settings.voiceProfiles[0];
+    return this.speech.dispatch(draft, {
+      exaggeration: voiceProfile?.exaggeration,
+      cfgWeight: voiceProfile?.cfgWeight,
+    });
+  }
+
+  private record(kind: AgentActivity["kind"], message: string, draftId?: string): void {
+    this.activity.push({ id: randomUUID(), kind, message, createdAt: new Date().toISOString(), draftId });
+    if (this.activity.length > 60) this.activity.shift();
+  }
+
+  private enrichQuestion(question: string): string {
+    const profile = this.settings.profiles.find((item) => item.id === this.settings.activeProfileId) ?? this.settings.profiles[0];
+    const voiceProfile = this.settings.voiceProfiles.find((item) => item.name === this.settings.voiceProfile || item.id === this.settings.voiceProfile.toLowerCase()) ?? this.settings.voiceProfiles[0];
+    const knowledge = this.workspace.context(this.settings.clientWorkspace);
+    const profileContext = profile ? `Agent profile: ${profile.name}. Tone: ${profile.tone}. Voice style: ${profile.voiceStyle}. Instructions: ${profile.instructions}` : "";
+    const voiceContext = voiceProfile ? `Voice profile: ${voiceProfile.name}. Voice instructions: ${voiceProfile.instructions}` : "";
+    return [profileContext, voiceContext, knowledge ? `Client workspace knowledge:\n${knowledge}` : "", `Request: ${question}`].filter(Boolean).join("\n\n");
+  }
+
+  private recordUsage(reply: ModelReply): void {
+    this.telemetry.requests += 1;
+    this.telemetry.lastModel = reply.model;
+    this.telemetry.lastProvider = reply.provider;
+    if (!reply.usage?.exact) return;
+    this.telemetry.usageAvailable = true;
+    this.telemetry.measuredRequests += 1;
+    this.telemetry.promptTokens += reply.usage.promptTokens ?? 0;
+    this.telemetry.completionTokens += reply.usage.completionTokens ?? 0;
+    this.telemetry.totalTokens += reply.usage.totalTokens ?? 0;
+    this.telemetry.generationSeconds += reply.usage.durationSeconds ?? 0;
+    this.telemetry.averageTokensPerSecond = this.telemetry.generationSeconds > 0
+      ? this.telemetry.completionTokens / this.telemetry.generationSeconds
+      : null;
+  }
+
+  private persistSession(): void {
+    if (!this.sessionStore || !this.activeSession) return;
+    this.activeSession = this.sessionStore.save({
+      ...this.activeSession,
+      clientWorkspace: this.settings.clientWorkspace,
+      transcript: structuredClone(this.transcript),
+      drafts: this.drafts.list(),
+      activity: structuredClone(this.activity),
+      escalations: structuredClone(this.escalations),
+    });
+  }
+
+  private resetConversation(): void {
+    if (this.autonomousTimer) clearTimeout(this.autonomousTimer);
+    this.autonomousTimer = undefined;
+    this.responseEpoch += 1;
+    this.autonomousInFlight = false;
+    this.transcript.length = 0;
+    this.activity.length = 0;
+    this.escalations.length = 0;
+    this.drafts.replace([]);
+  }
+}

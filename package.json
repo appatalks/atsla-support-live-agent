@@ -1,0 +1,47 @@
+{
+  "name": "voice-bridge",
+  "version": "0.1.0",
+  "description": "Local audio bridge for approved AI meeting responses",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "simulate": "tsx src/simulation.ts",
+    "audio:status": "bash tools/audio-bridge.sh status",
+    "audio:dry-run": "bash tools/audio-bridge.sh start --dry-run",
+    "whisper:dry-run": "bash tools/transcribe-stream.sh --dry-run",
+    "whisper:bootstrap:dry-run": "bash tools/bootstrap-whisper.sh --dry-run",
+    "audio:wire-client": "bash tools/route-client-audio.sh wire",
+    "desktop": "electron .",
+    "app:start": "bash tools/voice-bridge.sh start",
+    "app:stop": "bash tools/voice-bridge.sh stop",
+    "app:status": "bash tools/voice-bridge.sh status",
+    "install:local": "bash tools/install.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/appatalks/teams-support-live-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/appatalks/teams-support-live-agent/issues"
+  },
+  "homepage": "https://github.com/appatalks/teams-support-live-agent#readme",
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "fastify": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "electron": "^43.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "private": "true"
+}

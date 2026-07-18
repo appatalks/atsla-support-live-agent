@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/voice-bridge-supervisor"
+LOG_DIR="${VOICE_BRIDGE_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/voice-bridge}"
+PID_DIR="$RUNTIME_DIR/pids"
+OS="$(uname -s)"
+SUPERVISOR_PID_FILE="$RUNTIME_DIR/supervisor.pid"
+
+mkdir -p "$LOG_DIR"
+
+is_running() {
+  [[ -f "$1" ]] && kill -0 "$(<"$1")" >/dev/null 2>&1
+}
+
+stop_tree() {
+  local pid="$1"
+  local child
+  while IFS= read -r child; do
+    [[ -n "$child" ]] && stop_tree "$child"
+  done < <(pgrep -P "$pid" 2>/dev/null || true)
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+  local attempts=0
+  while kill -0 "$pid" >/dev/null 2>&1 && (( attempts < 20 )); do
+    read -r -t 0.1 _ || true
+    (( attempts += 1 ))
+  done
+  kill -KILL "$pid" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+  trap - EXIT INT TERM HUP
+  if [[ -d "$PID_DIR" ]]; then
+    for file in "$PID_DIR"/*.pid; do
+      [[ -f "$file" ]] || continue
+      stop_tree "$(<"$file")"
+    done
+  fi
+  if [[ "$OS" == "Linux" ]]; then
+    bash "$ROOT_DIR/tools/audio-bridge.sh" stop >/dev/null 2>&1 || true
+  fi
+  rm -rf "$RUNTIME_DIR"
+}
+
+launch() {
+  local name="$1"
+  shift
+    if [[ "$OS" == "Linux" ]]; then
+      setsid "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+    else
+      "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+    fi
+  printf '%s' "$!" > "$PID_DIR/$name.pid"
+}
+
+start() {
+  if is_running "$SUPERVISOR_PID_FILE"; then
+    echo "Voice Bridge is already running (PID $(<"$SUPERVISOR_PID_FILE"))."
+    return
+  fi
+  rm -rf "$RUNTIME_DIR"
+  mkdir -p "$PID_DIR"
+  for log_name in api audio copilot desktop qwen transcription voice; do
+    : > "$LOG_DIR/$log_name.log"
+  done
+  printf '%s' "$$" > "$SUPERVISOR_PID_FILE"
+  trap cleanup EXIT INT TERM HUP
+
+  if [[ "$OS" == "Linux" ]]; then
+    bash "$ROOT_DIR/tools/audio-bridge.sh" stop >/dev/null 2>&1 || true
+    bash "$ROOT_DIR/tools/audio-bridge.sh" start >>"$LOG_DIR/audio.log" 2>&1
+  else
+    [[ -n "${VOICE_BRIDGE_MAC_AGENT_DEVICE:-}" ]] || echo "macOS: configure BlackHole and set VOICE_BRIDGE_MAC_AGENT_DEVICE before live call output." >>"$LOG_DIR/audio.log"
+  fi
+
+  local python="$ROOT_DIR/vendor/voice_clone_module/.venv/bin/python"
+  local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/vendor/voice_clone_module/voices/appatalks.wav}"
+  launch qwen env VOICE_BRIDGE_QWEN_MODEL="${VOICE_BRIDGE_QWEN_MODEL:-qwen3-8b}" VOICE_CLONE_DEVICE="${VOICE_CLONE_DEVICE:-auto}" "$python" "$ROOT_DIR/tools/qwen_bridge.py"
+  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference"
+
+  local acp_script="${EVA_ACP_BRIDGE_SCRIPT:-$ROOT_DIR/../eva-agent/tools/acp_bridge.py}"
+  if [[ -f "$acp_script" ]] && command -v copilot >/dev/null 2>&1; then
+    launch copilot python3 "$acp_script" --bind 127.0.0.1 --port 8888 --cwd "$ROOT_DIR"
+  fi
+
+  local audio_output="pipewire"
+  [[ "$OS" == "Darwin" ]] && audio_output="coreaudio"
+  launch api env \
+    VOICE_BRIDGE_ENABLE_AUDIO_CONTROL="$([[ "$OS" == "Linux" ]] && echo true || echo false)" \
+    VOICE_BRIDGE_PROVIDER=local-qwen \
+    LOCAL_QWEN_URL=http://127.0.0.1:8001/ \
+    COPILOT_ACP_URL=http://127.0.0.1:8888/ \
+    LOCAL_VOICE_BRIDGE_URL=http://127.0.0.1:8090/ \
+    VOICE_BRIDGE_VOICE_PROFILE=Appatalks \
+    VOICE_BRIDGE_TRANSCRIPTION_MODEL="whisper.cpp base.en" \
+    VOICE_BRIDGE_AUDIO_OUTPUT="$audio_output" \
+    VOICE_BRIDGE_AGENT_SINK=voice_bridge_agent \
+    VOICE_BRIDGE_MAC_AGENT_DEVICE="${VOICE_BRIDGE_MAC_AGENT_DEVICE:-}" \
+    node --import tsx "$ROOT_DIR/src/index.ts"
+
+  if [[ "$OS" == "Linux" ]]; then
+    launch transcription env \
+      WHISPER_BIN="$ROOT_DIR/vendor/whisper.cpp/build/bin/whisper-cli" \
+      WHISPER_MODEL="$ROOT_DIR/vendor/whisper.cpp/models/ggml-base.en.bin" \
+      VOICE_BRIDGE_API_URL=http://127.0.0.1:4173 \
+      bash "$ROOT_DIR/tools/transcribe-stream.sh"
+    bash "$ROOT_DIR/tools/route-client-audio.sh" wire agent >/dev/null 2>&1 || true
+  fi
+
+    if [[ "$OS" == "Linux" ]]; then
+      setsid "$ROOT_DIR/node_modules/electron/dist/electron" "$ROOT_DIR" >>"$LOG_DIR/desktop.log" 2>&1 &
+    else
+      "$ROOT_DIR/node_modules/electron/dist/electron" "$ROOT_DIR" >>"$LOG_DIR/desktop.log" 2>&1 &
+    fi
+  local desktop_pid="$!"
+  printf '%s' "$desktop_pid" > "$PID_DIR/desktop.pid"
+  wait "$desktop_pid" || true
+  cleanup
+}
+
+stop() {
+  if is_running "$SUPERVISOR_PID_FILE"; then
+    local supervisor_pid="$(<"$SUPERVISOR_PID_FILE")"
+    kill -TERM "$supervisor_pid" >/dev/null 2>&1 || true
+    local attempts=0
+    while kill -0 "$supervisor_pid" >/dev/null 2>&1 && (( attempts < 30 )); do
+      read -r -t 0.1 _ || true
+      (( attempts += 1 ))
+    done
+    if kill -0 "$supervisor_pid" >/dev/null 2>&1; then
+      kill -KILL "$supervisor_pid" >/dev/null 2>&1 || true
+      cleanup
+    fi
+    echo "Voice Bridge shutdown requested."
+  else
+    cleanup
+    echo "Voice Bridge was not running; stale state was cleaned."
+  fi
+}
+
+status() {
+  if is_running "$SUPERVISOR_PID_FILE"; then
+    echo "running (supervisor PID $(<"$SUPERVISOR_PID_FILE"))"
+    for file in "$PID_DIR"/*.pid; do [[ -f "$file" ]] && printf '%s: %s\n' "$(basename "$file" .pid)" "$(<"$file")"; done
+  else
+    echo "stopped"
+  fi
+}
+
+case "${1:-start}" in
+  start) start ;;
+  stop) stop ;;
+  restart) stop; start ;;
+  status) status ;;
+  *) echo "Usage: tools/voice-bridge.sh [start|stop|restart|status]" >&2; exit 2 ;;
+esac
