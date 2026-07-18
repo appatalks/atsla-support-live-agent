@@ -18,10 +18,13 @@ describe("installation entry points", () => {
     expect(installer).toContain('npm install --include=dev');
   });
 
-  it("loads an optional persistent configuration file for the Copilot ACP bridge", () => {
+  it("starts ATSLA's independent stateless Copilot ACP bridge", () => {
     const supervisor = readFileSync(`${root}/tools/voice-bridge.sh`, "utf8");
-    expect(supervisor).toContain('ENV_FILE="${VOICE_BRIDGE_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/voice-bridge/env}"');
-    expect(supervisor).toContain('source "$ENV_FILE"');
-    expect(supervisor).toContain("EVA_ACP_BRIDGE_SCRIPT");
+    const bridge = readFileSync(`${root}/tools/stateless_acp_bridge.py`, "utf8");
+    expect(supervisor).toContain('python3 "$ROOT_DIR/tools/stateless_acp_bridge.py"');
+    expect(supervisor).not.toContain("EVA_ACP_BRIDGE_SCRIPT");
+    expect(bridge).toContain('"session/new"');
+    expect(bridge).toContain('"session/prompt"');
+    expect(bridge).not.toContain("eva-agent");
   });
 });

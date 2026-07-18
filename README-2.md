@@ -121,22 +121,15 @@ Best practices:
 
 ## Provider Isolation
 
-Local Qwen receives only the current request transcript and explicit application context. GitHub Copilot CLI is launched through `tools/copilot-no-memory.sh` and `tools/stateless_acp_bridge.py`:
+Local Qwen receives only the current request transcript and explicit application context. GitHub Copilot CLI is launched through ATSLA's own `tools/copilot-no-memory.sh` and `tools/stateless_acp_bridge.py` adapter:
 
 - Copilot resume, continuation, session-ID, and memory options are rejected.
 - Custom instructions, built-in MCPs, remote control, and durable request logs are disabled.
-- EVA cognition, persistent memory, telemetry, memory injection, and post-response reflection are disabled.
-- Every completion creates a fresh ACP session.
+- Tool and permission requests are denied by the adapter.
+- Every completion creates a fresh Copilot ACP process and session.
+- No EVA checkout or shared ACP bridge is required.
 
 This keeps ATSLA as the authority for client context and prevents Copilot conversation history from crossing clients.
-
-For the installed application, configure the EVA ACP bridge path in `~/.config/voice-bridge/env` when EVA is not a sibling checkout:
-
-```bash
-EVA_ACP_BRIDGE_SCRIPT=/path/to/eva-agent/tools/acp_bridge.py
-```
-
-Restart ATSLA after changing this file. The **GitHub Copilot CLI** provider is shown as offline until its authenticated local ACP bridge is running on `127.0.0.1:8888`.
 
 ## Response Modes
 

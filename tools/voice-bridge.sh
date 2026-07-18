@@ -4,12 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/voice-bridge-supervisor"
 LOG_DIR="${VOICE_BRIDGE_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/voice-bridge}"
-ENV_FILE="${VOICE_BRIDGE_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/voice-bridge/env}"
 PID_DIR="$RUNTIME_DIR/pids"
 OS="$(uname -s)"
 SUPERVISOR_PID_FILE="$RUNTIME_DIR/supervisor.pid"
 
-[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 mkdir -p "$LOG_DIR"
 
 is_running() {
@@ -85,17 +83,11 @@ start() {
   launch qwen env VOICE_BRIDGE_QWEN_MODEL="${VOICE_BRIDGE_QWEN_MODEL:-qwen3-8b}" VOICE_CLONE_DEVICE="${VOICE_CLONE_DEVICE:-auto}" "$python" "$ROOT_DIR/tools/qwen_bridge.py"
   launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --eva-reference "$eva_reference" --seed-audio "$greeting_seed" --seed-reference-sha256 "$greeting_seed_reference_sha256" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
 
-  local acp_script="${EVA_ACP_BRIDGE_SCRIPT:-$ROOT_DIR/../eva-agent/tools/acp_bridge.py}"
-  if [[ -f "$acp_script" ]] && command -v copilot >/dev/null 2>&1; then
+  if command -v copilot >/dev/null 2>&1; then
     launch copilot env \
-      EVA_ACP_TOOLS_DIR="$(dirname "$acp_script")" \
-      EVA_MEMORY_BACKEND=disabled \
-      EVA_TELEMETRY=0 \
-      KUSTO_CLUSTER_URL= \
-      KUSTO_DATABASE= \
       python3 "$ROOT_DIR/tools/stateless_acp_bridge.py" --bind 127.0.0.1 --port 8888 --cwd "$ROOT_DIR" --copilot-path "$ROOT_DIR/tools/copilot-no-memory.sh"
   else
-    echo "Copilot ACP bridge is unavailable. Set EVA_ACP_BRIDGE_SCRIPT in $ENV_FILE to EVA's tools/acp_bridge.py." >>"$LOG_DIR/copilot.log"
+    echo "Copilot ACP bridge is unavailable because the Copilot CLI is not installed or not on PATH." >>"$LOG_DIR/copilot.log"
   fi
 
   local audio_output="pipewire"
