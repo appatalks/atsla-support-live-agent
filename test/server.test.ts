@@ -67,6 +67,9 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain('id="directText"');
     expect(dashboard.body).toContain("Speak direct text");
     expect(dashboard.body).toContain("/v1/templates/speak");
+    expect(dashboard.body).toContain("submitOnEnter");
+    expect(dashboard.body).toContain("event.key==='Enter'&&!event.shiftKey");
+    expect(dashboard.body).toContain("intervene-input");
     expect(dashboard.body).not.toContain('id="wire"');
     expect(dashboard.body).toContain("height:calc(100vh - 16px)");
     expect(dashboard.body).not.toContain("window-drag-strip");
