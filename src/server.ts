@@ -61,7 +61,7 @@ export function buildServer() {
     provider: provider.id,
     simulation: provider.id === "simulation",
     voice: speech.constructor.name,
-    voiceProfile: process.env.VOICE_BRIDGE_VOICE_PROFILE ?? "Appatalks",
+    voiceProfile: process.env.VOICE_BRIDGE_VOICE_PROFILE ?? "AppaTalks",
     transcriptionModel: process.env.VOICE_BRIDGE_TRANSCRIPTION_MODEL ?? "whisper.cpp base.en",
     audioControlEnabled: process.env.VOICE_BRIDGE_ENABLE_AUDIO_CONTROL === "true",
     dependencies: {
@@ -91,11 +91,25 @@ export function buildServer() {
   app.put<{ Body: Record<string, unknown> }>("/v1/settings", async (request) => coordinator.updateSettings(request.body));
   app.post<{ Body: { path?: string; name?: string } }>("/v1/client-workspace", async (request) => coordinator.selectClientWorkspace(request.body));
   app.get("/v1/client-workspace/status", async () => coordinator.workspaceStatus());
+  app.get("/v1/context/status", async () => coordinator.contextStatus());
+  app.post("/v1/context/load", async (_request, reply) => {
+    try { return coordinator.loadClientContext(); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Client context load failed." }); }
+  });
+  app.post("/v1/context/clear", async () => coordinator.clearClientContext());
   app.get("/v1/sessions", async () => ({ sessions: coordinator.listSessions(), activeSession: coordinator.activeSessionInfo() }));
-  app.post<{ Body: { title?: string; clientWorkspace?: string; sendGreeting?: boolean } }>("/v1/sessions", async (request) => ({ session: await coordinator.createSession(request.body) }));
+  app.post<{ Body: { title?: string } }>("/v1/sessions", async (request, reply) => {
+    try { return { session: await coordinator.createSession(request.body) }; }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Session creation failed." }); }
+  });
   app.post<{ Params: { sessionId: string } }>("/v1/sessions/:sessionId/select", async (request, reply) => {
     try { return { session: coordinator.selectSession(request.params.sessionId) }; }
     catch (error) { return reply.code(404).send({ error: error instanceof Error ? error.message : "Session selection failed." }); }
+  });
+  app.patch<{ Params: { sessionId: string }; Body: { title?: string } }>("/v1/sessions/:sessionId", async (request, reply) => {
+    if (!request.body.title?.trim()) return reply.code(400).send({ error: "Session title is required." });
+    try { return { session: coordinator.renameSession(request.params.sessionId, request.body.title) }; }
+    catch (error) { return reply.code(404).send({ error: error instanceof Error ? error.message : "Session rename failed." }); }
   });
   app.post("/v1/meeting-summary", async () => {
     const result = await coordinator.summarizeMeeting();

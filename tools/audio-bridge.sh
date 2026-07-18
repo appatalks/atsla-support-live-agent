@@ -17,7 +17,8 @@ start creates two local PipeWire/PulseAudio-compatible sinks:
 
 Approved agent WAV audio is sent to the agent sink by pw-cat. The operator microphone remains a
 separate physical source. route-client-audio.sh switches communication apps between those inputs.
-The Conference Capture sink is looped to the physical output so the user continues to hear the call.
+The Conference Capture and Agent Microphone monitors are both looped to the physical output so the
+operator hears the caller and the agent, while the communication app receives only the selected mic.
 EOF
 }
 
@@ -43,8 +44,10 @@ status() {
   local active=false
   [[ -f "$STATE_DIR/conference-sink.module" && -f "$STATE_DIR/agent-sink.module" ]] && active=true
   if [[ "${1:-}" == "--json" ]]; then
-    printf '{"active":%s,"conferenceSink":"%s","conferenceMonitor":"%s.monitor","agentSink":"%s","agentMicrophone":"%s.monitor","operatorMicrophone":"%s"}\n' \
-      "$active" "$CONFERENCE_SINK" "$CONFERENCE_SINK" "$AGENT_SINK" "$AGENT_SINK" "${HOST_MIC:-$(cat "$STATE_DIR/operator-source" 2>/dev/null || true)}"
+    local operator_monitoring=false
+    [[ "$active" == true && -f "$STATE_DIR/agent-monitor-loopback.module" ]] && operator_monitoring=true
+    printf '{"active":%s,"conferenceSink":"%s","conferenceMonitor":"%s.monitor","agentSink":"%s","agentMicrophone":"%s.monitor","operatorMicrophone":"%s","operatorMonitoring":%s}\n' \
+      "$active" "$CONFERENCE_SINK" "$CONFERENCE_SINK" "$AGENT_SINK" "$AGENT_SINK" "${HOST_MIC:-$(cat "$STATE_DIR/operator-source" 2>/dev/null || true)}" "$operator_monitoring"
   else
     printf 'active: %s\nconference speaker device: %s\nconference capture source: %s.monitor\nagent microphone: %s.monitor\n' \
       "$active" "$CONFERENCE_SINK" "$CONFERENCE_SINK" "$AGENT_SINK"
@@ -69,7 +72,7 @@ start() {
   }
   trap cleanup_on_error ERR
 
-  local conference_sink agent_sink conference_loopback
+  local conference_sink agent_sink conference_loopback agent_monitor_loopback
   conference_sink="$(load_module module-null-sink "sink_name=$CONFERENCE_SINK" "sink_properties=device.description=Voice_Bridge_Conference_Capture")"
   created+=("$conference_sink")
   printf '%s' "$conference_sink" > "$STATE_DIR/conference-sink.module"
@@ -81,6 +84,10 @@ start() {
   conference_loopback="$(load_module module-loopback "source=$CONFERENCE_SINK.monitor" "sink=$HOST_SINK")"
   created+=("$conference_loopback")
   printf '%s' "$conference_loopback" > "$STATE_DIR/conference-loopback.module"
+
+  agent_monitor_loopback="$(load_module module-loopback "source=$AGENT_SINK.monitor" "sink=$HOST_SINK")"
+  created+=("$agent_monitor_loopback")
+  printf '%s' "$agent_monitor_loopback" > "$STATE_DIR/agent-monitor-loopback.module"
 
   printf '%s' "$HOST_MIC" > "$STATE_DIR/operator-source"
   [[ -f "$STATE_DIR/selected-input" ]] || printf '%s' "operator" > "$STATE_DIR/selected-input"
@@ -94,6 +101,7 @@ stop() {
   require_pactl
   unload_module_file "$STATE_DIR/microphone-loopback.module"
   unload_module_file "$STATE_DIR/conference-loopback.module"
+  unload_module_file "$STATE_DIR/agent-monitor-loopback.module"
   unload_module_file "$STATE_DIR/agent-sink.module"
   unload_module_file "$STATE_DIR/conference-sink.module"
   rm -f "$STATE_DIR/operator-source" "$STATE_DIR/selected-input"

@@ -40,13 +40,22 @@ export class SessionStore {
     return JSON.parse(readFileSync(path, "utf8")) as MeetingSession;
   }
 
-  list(): MeetingSessionSummary[] {
+  rename(id: string, title: string): MeetingSession {
+    const cleanTitle = title.trim().slice(0, 120);
+    if (!cleanTitle) throw new Error("Session title is required.");
+    return this.save({ ...this.get(id), title: cleanTitle });
+  }
+
+  list(clientWorkspace: string): MeetingSessionSummary[] {
     if (!existsSync(this.root)) return [];
+    const selectedWorkspace = clientWorkspace.trim();
+    if (!selectedWorkspace) return [];
     return readdirSync(this.root)
       .filter((name) => name.endsWith(".json"))
       .flatMap((name) => {
         try {
           const session = JSON.parse(readFileSync(join(this.root, name), "utf8")) as MeetingSession;
+          if (session.clientWorkspace !== selectedWorkspace) return [];
           return [{
             id: session.id,
             title: session.title,

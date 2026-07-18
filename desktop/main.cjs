@@ -12,7 +12,7 @@ app.disableHardwareAcceleration();
 
 async function request(pathname, options = {}) {
   const response = await fetch(`${bridgeUrl}${pathname}`, options);
-  if (!response.ok) throw new Error(`Voice Bridge returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`ATSLA | Support Live Agent returned HTTP ${response.status}.`);
   return response.json();
 }
 
@@ -25,11 +25,11 @@ async function wireClientAudio(inputMode) {
 
 function createWindow() {
   const window = new BrowserWindow({
-    title: "Voice Bridge",
-    width: 1520,
-    height: 980,
-    minWidth: 1120,
-    minHeight: 720,
+    title: "ATSLA | Support Live Agent",
+    width: 1800,
+    height: 1120,
+    minWidth: 1280,
+    minHeight: 800,
     backgroundColor: "#f3f0e7",
     webPreferences: {
       contextIsolation: true,
@@ -43,12 +43,12 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
-  const startingPage = `data:text/html,${encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#f4f1e8;color:#17221f;font-family:sans-serif;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:12px;height:12px;margin:0 auto 18px;border-radius:50%;background:#1d5546;box-shadow:0 0 0 7px #dce8c9}h1{font-family:serif;font-size:30px;margin:0 0 8px}p{color:#607069}</style></head><body><div class="box"><div class="dot"></div><h1>Voice Bridge</h1><p>Starting local meeting services...</p></div></body></html>`)}`;
+  const startingPage = `data:text/html,${encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#f4f1e8;color:#17221f;font-family:sans-serif;display:grid;place-items:center;height:100vh}.box{text-align:center}.dot{width:12px;height:12px;margin:0 auto 18px;border-radius:50%;background:#1d5546;box-shadow:0 0 0 7px #dce8c9}h1{font-family:serif;font-size:30px;margin:0 0 8px}p{color:#607069}</style></head><body><div class="box"><div class="dot"></div><h1>ATSLA | Support Live Agent</h1><p>Starting local meeting services...</p></div></body></html>`)}`;
   window.loadURL(startingPage).then(() => loadVoiceBridge(window));
 }
 
 async function loadVoiceBridge(window) {
-  let lastError = new Error("Voice Bridge API did not respond.");
+  let lastError = new Error("ATSLA | Support Live Agent API did not respond.");
   for (let attempt = 0; attempt < 60 && !window.isDestroyed(); attempt += 1) {
     try {
       const response = await fetch(`${bridgeUrl}/health`, { signal: AbortSignal.timeout(1000) });
@@ -62,13 +62,13 @@ async function loadVoiceBridge(window) {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  if (!window.isDestroyed()) dialog.showErrorBox("Voice Bridge could not start", lastError.message);
+  if (!window.isDestroyed()) dialog.showErrorBox("ATSLA | Support Live Agent could not start", lastError.message);
 }
 
 function createMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
-      label: "Voice Bridge",
+      label: "ATSLA | Support Live Agent",
       submenu: [
         { label: "Wire Teams Browser Audio", click: () => wireClientAudio().catch((error) => dialog.showErrorBox("Audio routing failed", error.message)) },
         { label: "Stop Agent Speech", click: () => request("/v1/stop", { method: "POST" }).catch((error) => dialog.showErrorBox("Stop failed", error.message)) },

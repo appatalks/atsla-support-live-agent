@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Loopback-only Appatalks voice bridge with per-request expression controls."""
+"""Loopback-only AppaTalks voice bridge with persistent greeting prewarming."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from http import HTTPStatus
@@ -17,8 +18,10 @@ MAX_INPUT_CHARS = 12_000
 
 
 class VoiceService:
-    def __init__(self, reference: Path) -> None:
+    def __init__(self, reference: Path, cache_dir: Path, warm_texts: set[str]) -> None:
         self.reference = reference
+        self.cache_dir = cache_dir
+        self.warm_texts = warm_texts
         self.engine: Any | None = None
         self.load_error: str | None = None
         self.lock = Lock()
@@ -38,7 +41,12 @@ class VoiceService:
             "reference_path": str(self.reference),
             "load_error": self.load_error,
             "expression_controls": ["exaggeration", "cfg_weight"],
+            "greeting_cache_entries": len(list(self.cache_dir.glob("*.wav"))),
         }
+
+    def warm(self, text: str, exaggeration: float, cfg_weight: float) -> None:
+        self.warm_texts.add(text)
+        self.synthesize(text, exaggeration, cfg_weight)
 
     def synthesize(self, text: str, exaggeration: float, cfg_weight: float) -> bytes:
         if not text.strip():
@@ -48,6 +56,9 @@ class VoiceService:
         if not self.reference.is_file():
             raise RuntimeError("the configured voice reference is unavailable")
         with self.lock:
+            cache_path = self.cache_path(text, exaggeration, cfg_weight) if text in self.warm_texts else None
+            if cache_path and cache_path.is_file():
+                return cache_path.read_bytes()
             if self.engine is None:
                 from voice_clone_module import VoiceCloner
                 self.engine = VoiceCloner(
@@ -60,9 +71,25 @@ class VoiceService:
                 output_path = Path(output.name)
             try:
                 self.engine.save(text, output_path, exaggeration=exaggeration, cfg_weight=cfg_weight)
-                return output_path.read_bytes()
+                audio = output_path.read_bytes()
+                if cache_path:
+                    self.cache_dir.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_bytes(audio)
+                return audio
             finally:
                 output_path.unlink(missing_ok=True)
+
+    def cache_path(self, text: str, exaggeration: float, cfg_weight: float) -> Path:
+        reference_state = self.reference.stat()
+        key = json.dumps({
+            "text": text,
+            "exaggeration": exaggeration,
+            "cfg_weight": cfg_weight,
+            "reference": str(self.reference),
+            "reference_size": reference_state.st_size,
+            "reference_mtime_ns": reference_state.st_mtime_ns,
+        }, sort_keys=True).encode()
+        return self.cache_dir / f"{hashlib.sha256(key).hexdigest()}.wav"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -116,11 +143,21 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--reference", type=Path, required=True)
+    parser.add_argument("--cache-dir", type=Path, default=Path.home() / ".cache" / "atsla" / "greetings")
+    parser.add_argument("--warm-text", default="")
+    parser.add_argument("--warm-exaggeration", type=float, default=0.65)
+    parser.add_argument("--warm-cfg-weight", type=float, default=0.35)
     args = parser.parse_args()
     handler = type("VoiceHandler", (Handler,), {})
-    handler.service = VoiceService(args.reference.expanduser().resolve())
+    handler.service = VoiceService(args.reference.expanduser().resolve(), args.cache_dir.expanduser().resolve(), set())
+    if args.warm_text:
+        try:
+            handler.service.warm(args.warm_text, args.warm_exaggeration, args.warm_cfg_weight)
+            print("AppaTalks Standard Greeting cache ready", flush=True)
+        except Exception as error:
+            print(f"AppaTalks Standard Greeting cache unavailable: {error}", flush=True)
     server = ThreadingHTTPServer((args.host, args.port), handler)
-    print(f"Voice Bridge TTS listening on http://{args.host}:{args.port}")
+    print(f"AppaTalks TTS listening on http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

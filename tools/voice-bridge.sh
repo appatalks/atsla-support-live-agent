@@ -76,12 +76,19 @@ start() {
 
   local python="$ROOT_DIR/vendor/voice_clone_module/.venv/bin/python"
   local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/vendor/voice_clone_module/voices/appatalks.wav}"
+  local standard_greeting="Hi, I am AppaTalks, your AI support agent. I can help with support questions and next steps. If you would like a live representative, say Live Representative Please and I will notify one. How can I help today?"
   launch qwen env VOICE_BRIDGE_QWEN_MODEL="${VOICE_BRIDGE_QWEN_MODEL:-qwen3-8b}" VOICE_CLONE_DEVICE="${VOICE_CLONE_DEVICE:-auto}" "$python" "$ROOT_DIR/tools/qwen_bridge.py"
-  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference"
+  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
 
   local acp_script="${EVA_ACP_BRIDGE_SCRIPT:-$ROOT_DIR/../eva-agent/tools/acp_bridge.py}"
   if [[ -f "$acp_script" ]] && command -v copilot >/dev/null 2>&1; then
-    launch copilot python3 "$acp_script" --bind 127.0.0.1 --port 8888 --cwd "$ROOT_DIR"
+    launch copilot env \
+      EVA_ACP_TOOLS_DIR="$(dirname "$acp_script")" \
+      EVA_MEMORY_BACKEND=disabled \
+      EVA_TELEMETRY=0 \
+      KUSTO_CLUSTER_URL= \
+      KUSTO_DATABASE= \
+      python3 "$ROOT_DIR/tools/stateless_acp_bridge.py" --bind 127.0.0.1 --port 8888 --cwd "$ROOT_DIR" --copilot-path "$ROOT_DIR/tools/copilot-no-memory.sh"
   fi
 
   local audio_output="pipewire"
@@ -92,7 +99,7 @@ start() {
     LOCAL_QWEN_URL=http://127.0.0.1:8001/ \
     COPILOT_ACP_URL=http://127.0.0.1:8888/ \
     LOCAL_VOICE_BRIDGE_URL=http://127.0.0.1:8090/ \
-    VOICE_BRIDGE_VOICE_PROFILE=Appatalks \
+    VOICE_BRIDGE_VOICE_PROFILE=AppaTalks \
     VOICE_BRIDGE_TRANSCRIPTION_MODEL="whisper.cpp base.en" \
     VOICE_BRIDGE_AUDIO_OUTPUT="$audio_output" \
     VOICE_BRIDGE_AGENT_SINK=voice_bridge_agent \

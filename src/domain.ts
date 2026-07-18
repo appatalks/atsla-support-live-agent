@@ -25,6 +25,8 @@ export type LocalModelId = keyof typeof modelProfiles;
 export type ProviderId = "simulation" | "openai-compatible" | "copilot-acp" | "local-qwen";
 export type ResponseMode = "disabled" | "suggest" | "approval" | "guarded-autonomous" | "autonomous";
 export type Speaker = "remote" | "local" | "agent";
+export const NO_RESPONSE_SENTINEL = "[[NO_RESPONSE]]";
+export const STANDARD_GREETING = "Hi, I am AppaTalks, your AI support agent. I can help with support questions and next steps. If you would like a live representative, say Live Representative Please and I will notify one. How can I help today?";
 
 export interface TranscriptEvent {
   id: string;
@@ -130,7 +132,7 @@ export const responseTemplates: ResponseTemplate[] = [
   {
     id: "standard-greeting",
     label: "Standard greeting",
-    text: "Hi I am AppaTalks - Your Agentic Live Agent. I am backed by the real AppaTalks. If you want him or a counterpart to jump in, just say, Live Representative Please, and I'll route you their way. So let's get started.",
+    text: STANDARD_GREETING,
   },
   {
     id: "acknowledge",

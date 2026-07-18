@@ -102,6 +102,42 @@ describe("autonomous meeting replies", () => {
   });
 });
 
+describe("ATSLA identity", () => {
+  it("answers the ATSLA expansion deterministically, including spelled-out speech", async () => {
+    let calls = 0;
+    const provider = { id: "local-qwen" as const, complete: async () => { calls += 1; return { text: "Incorrect expansion", provider: "local-qwen" as const, model: "test" }; } };
+    const coordinator = new MeetingCoordinator(provider, new ResponsePolicy("approval"), new DraftStore(), new SimulatedSpeechOutput());
+
+    await coordinator.ingest({ id: "atsla", speaker: "remote", text: "What does A-T-S-L-A mean?", occurredAt: new Date().toISOString() });
+    const result = await coordinator.respondToConversation("");
+
+    expect(result.draft.reply).toMatchObject({ text: "ATSLA means AppaTalks Support Live Agent.", model: "atsla-identity" });
+    expect(calls).toBe(0);
+  });
+});
+
+describe("non-speech response suppression", () => {
+  it("documents a throat clear without calling the model or speaking", async () => {
+    let calls = 0;
+    const provider = { id: "local-qwen" as const, complete: async () => { calls += 1; return { text: "Should not happen", provider: "local-qwen" as const, model: "test" }; } };
+    const coordinator = new MeetingCoordinator(provider, new ResponsePolicy("autonomous"), new DraftStore(), new SimulatedSpeechOutput());
+
+    await coordinator.ingest({ id: "noise", speaker: "remote", text: "(clears throat)", occurredAt: new Date().toISOString() });
+    expect(calls).toBe(0);
+    expect(coordinator.state().speech).toHaveLength(0);
+    expect(coordinator.state().activity[0].message).toContain("no agent reply");
+  });
+
+  it("turns the hidden no-response sentinel into a dismissed draft with no speech", async () => {
+    const provider = { id: "local-qwen" as const, complete: async () => ({ text: "[[NO_RESPONSE]]", provider: "local-qwen" as const, model: "test" }) };
+    const coordinator = new MeetingCoordinator(provider, new ResponsePolicy("autonomous"), new DraftStore(), new SimulatedSpeechOutput());
+
+    const result = await coordinator.respondToConversation("Should we say anything?");
+    expect(result.draft.disposition).toBe("dismissed");
+    expect(coordinator.state().speech).toHaveLength(0);
+  });
+});
+
 describe("live representative escalation", () => {
   it("detects a request split across transcript chunks and supports acknowledgement", async () => {
     const coordinator = new MeetingCoordinator(
@@ -153,6 +189,8 @@ describe("network provider contracts", () => {
 
     expect(receivedUrl).toBe("http://127.0.0.1:8888/v1/chat/completions");
     expect(receivedPayload.acp_model).toBe("claude-sonnet-4.6");
+    expect((receivedPayload.messages as Array<{ role: string; content: string }>)[0].content).toContain("You are AppaTalks");
+    expect((receivedPayload.messages as Array<{ role: string; content: string }>)[0].content).toContain("ATSLA means AppaTalks Support Live Agent");
     expect(reply.text).toBe("Copilot reply");
   });
 
@@ -171,6 +209,8 @@ describe("network provider contracts", () => {
     const reply = await provider.complete({ transcript: [], question: "State the meeting status." });
 
     expect(receivedPayload.model).toBe("qwen3-8b");
+    expect((receivedPayload.messages as Array<{ role: string; content: string }>)[0].content).toContain("You are AppaTalks");
+    expect((receivedPayload.messages as Array<{ role: string; content: string }>)[0].content).toContain("ATSLA means AppaTalks Support Live Agent");
     expect(reply.provider).toBe("local-qwen");
     expect(reply.model).toBe("Qwen/Qwen3-8B");
     expect(reply.usage).toMatchObject({ promptTokens: 20, completionTokens: 5, totalTokens: 25, tokensPerSecond: 10, exact: true });

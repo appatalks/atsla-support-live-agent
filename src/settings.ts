@@ -30,6 +30,9 @@ export interface VoiceBridgeSettings {
   voiceProfiles: VoiceProfile[];
   activeProfileId: string;
   clientWorkspace: string;
+  globalKnowledgePath: string;
+  globalKnowledgeEnabled: boolean;
+  retainSessionLearnings: boolean;
   saveMeetingLog: boolean;
   summarizeMeeting: boolean;
   autonomyDelayMs: number;
@@ -38,7 +41,7 @@ export interface VoiceBridgeSettings {
 }
 
 const defaultProfiles: AgentProfile[] = [
-  { id: "support", name: "Support Partner", tone: "calm and practical", voiceStyle: "clear and warm", instructions: "Prioritize accurate troubleshooting, next steps, and concise summaries." },
+  { id: "support", name: "AppaTalks Support Partner", tone: "calm and practical", voiceStyle: "clear and warm", instructions: "You are AppaTalks. ATSLA means AppaTalks Support Live Agent. Prioritize accurate troubleshooting, next steps, and concise summaries." },
   { id: "technical", name: "Technical Specialist", tone: "precise and direct", voiceStyle: "measured and confident", instructions: "Explain technical tradeoffs plainly, identify assumptions, and avoid unsupported certainty." },
   { id: "concierge", name: "Client Concierge", tone: "warm and collaborative", voiceStyle: "friendly and polished", instructions: "Keep the conversation constructive, organized, and focused on the client outcome." },
 ];
@@ -46,8 +49,8 @@ const defaultProfiles: AgentProfile[] = [
 const defaultVoiceProfiles: VoiceProfile[] = [
   {
     id: "appatalks",
-    name: "Appatalks",
-    instructions: "You are an expert GitHub Reliability Engineer. Speak with calm operational authority, prioritize service reliability, incident clarity, practical remediation, and accountable next steps. Use natural contractions, brief thoughtful pauses, varied sentence rhythm, and warm human phrasing without narrating internal reasoning.",
+    name: "AppaTalks",
+    instructions: "You are AppaTalks, an expert GitHub Reliability Engineer. ATSLA means AppaTalks Support Live Agent. Speak with calm operational authority, prioritize service reliability, incident clarity, practical remediation, and accountable next steps. Use natural contractions, brief thoughtful pauses, varied sentence rhythm, and warm human phrasing without narrating internal reasoning.",
     exaggeration: 0.65,
     cfgWeight: 0.35,
   },
@@ -55,16 +58,19 @@ const defaultVoiceProfiles: VoiceProfile[] = [
 
 export function defaultSettings(): VoiceBridgeSettings {
   return {
-    settingsVersion: 4,
+    settingsVersion: 7,
     responseMode: "autonomous",
     defaultInputMode: "agent",
     modelProvider: "local-qwen",
     inputModel: "qwen3-8b",
     copilotModel: "auto",
-    voiceProfile: "Appatalks",
+    voiceProfile: "AppaTalks",
     voiceProfiles: defaultVoiceProfiles,
     activeProfileId: "support",
     clientWorkspace: "",
+    globalKnowledgePath: process.env.VOICE_BRIDGE_GLOBAL_KNOWLEDGE_PATH ?? join(homedir(), "Documents", "Voice Bridge Knowledge"),
+    globalKnowledgeEnabled: true,
+    retainSessionLearnings: true,
     saveMeetingLog: false,
     summarizeMeeting: true,
     autonomyDelayMs: 4_500,
@@ -112,20 +118,32 @@ export class SettingsStore {
   private load(): VoiceBridgeSettings {
     try {
       const stored = JSON.parse(readFileSync(this.settingsPath, "utf8")) as Partial<VoiceBridgeSettings>;
-      const isLegacy = stored.settingsVersion !== 4;
-      const migrated = isLegacy ? { ...stored, settingsVersion: 4, responseMode: "autonomous" as const, defaultInputMode: "agent" as const } : stored;
-      const migratedVoiceProfiles = migrated.voiceProfiles?.length ? migrated.voiceProfiles.map(normalizeVoiceProfile) : defaultVoiceProfiles;
+      const preV5 = !stored.settingsVersion || stored.settingsVersion < 5;
+      const requiresAppaTalksMigration = isLegacyDefaultVoiceSelection(stored.voiceProfile) || stored.voiceProfiles?.some(isLegacyDefaultVoiceProfile);
+      const requiresMigration = stored.settingsVersion !== 7 || requiresAppaTalksMigration;
+      const migrated = requiresMigration
+        ? { ...stored, settingsVersion: 7, ...(preV5 ? { responseMode: "autonomous" as const, defaultInputMode: "agent" as const } : {}) }
+        : stored;
+      const migratedVoiceProfiles = (migrated.voiceProfiles?.length ? migrated.voiceProfiles : defaultVoiceProfiles)
+        .map(normalizeVoiceProfile)
+        .map(migrateAppaTalksVoiceProfile);
       for (const profile of migratedVoiceProfiles) {
-        if (isLegacy && profile.id === "appatalks" && !profile.instructions.includes("natural contractions")) {
+        if (preV5 && profile.id === "appatalks" && !profile.instructions.includes("natural contractions")) {
           profile.instructions += " Use natural contractions, brief thoughtful pauses, varied sentence rhythm, and warm human phrasing without narrating internal reasoning.";
         }
       }
-      return {
+      const value: VoiceBridgeSettings = {
         ...defaultSettings(),
         ...migrated,
-        profiles: migrated.profiles?.length ? migrated.profiles.map(normalizeProfile) : defaultProfiles,
+        voiceProfile: isLegacyDefaultVoiceSelection(migrated.voiceProfile) ? "AppaTalks" : migrated.voiceProfile ?? "AppaTalks",
+        profiles: (migrated.profiles?.length ? migrated.profiles : defaultProfiles).map(normalizeProfile).map(migrateAppaTalksAgentProfile),
         voiceProfiles: migratedVoiceProfiles,
       };
+      if (requiresMigration) {
+        mkdirSync(resolve(this.settingsPath, ".."), { recursive: true });
+        writeFileSync(this.settingsPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+      }
+      return value;
     } catch {
       return defaultSettings();
     }
@@ -145,19 +163,22 @@ export class ClientWorkspace {
     mkdirSync(folder, { recursive: true });
     mkdirSync(join(folder, "knowledge"), { recursive: true });
     mkdirSync(join(folder, "skills"), { recursive: true });
+    mkdirSync(join(folder, "learnings"), { recursive: true });
     mkdirSync(join(folder, "meetings"), { recursive: true });
     const profilePath = join(folder, "client-profile.json");
     if (!existsSync(profilePath)) {
       writeFileSync(profilePath, `${JSON.stringify({ name: request.name?.trim() || basename(folder), createdAt: new Date().toISOString(), notes: "" }, null, 2)}\n`, "utf8");
       writeFileSync(join(folder, "knowledge", "README.md"), "# Client Knowledge\n\nAdd product notes, runbooks, and account context here.\n", "utf8");
       writeFileSync(join(folder, "skills", "README.md"), "# Agent Skills\n\nAdd client-specific procedures and escalation rules here.\n", "utf8");
+      writeFileSync(join(folder, "learnings", "README.md"), "# Session Learnings\n\nObserved client facts from sessions are retained here. Review before promoting them to authoritative knowledge.\n", "utf8");
     }
     return folder;
   }
 
   context(folder: string): string {
     if (!folder || !existsSync(folder)) return "";
-    const files = walk(folder).filter((file) => [".md", ".txt", ".json"].includes(extname(file).toLowerCase()) && !file.includes(`${join(folder, "meetings")}/`));
+    const roots = [join(folder, "client-profile.json"), join(folder, "knowledge"), join(folder, "skills"), join(folder, "learnings")];
+    const files = roots.flatMap((root) => existsSync(root) && statSync(root).isDirectory() ? walk(root) : existsSync(root) ? [root] : []).filter(isContextFile);
     let result = "";
     for (const file of files) {
       if (result.length >= 16_000) break;
@@ -168,6 +189,47 @@ export class ClientWorkspace {
       } catch {}
     }
     return result.trim();
+  }
+
+  globalContext(folder: string): string {
+    if (!folder || !existsSync(folder)) return "";
+    const files = walk(folder).filter(isContextFile);
+    return readContextFiles(files, folder, 20_000);
+  }
+
+  prepareGlobalKnowledge(folder: string): string {
+    if (!folder.trim()) throw new Error("Global knowledge path is required.");
+    const resolved = resolve(folder);
+    mkdirSync(resolved, { recursive: true });
+    const readme = join(resolved, "README.md");
+    if (!existsSync(readme)) {
+      writeFileSync(readme, "# Shared Voice Bridge Knowledge\n\nAdd documentation and reusable knowledge that is safe to share across every client here. Never place client-specific information in this folder.\n", "utf8");
+    }
+    return resolved;
+  }
+
+  contextStats(folder: string): { files: number; characters: number } {
+    if (!folder || !existsSync(folder)) return { files: 0, characters: 0 };
+    const context = this.context(folder);
+    const roots = [join(folder, "client-profile.json"), join(folder, "knowledge"), join(folder, "skills"), join(folder, "learnings")];
+    const files = roots.flatMap((root) => existsSync(root) && statSync(root).isDirectory() ? walk(root) : existsSync(root) ? [root] : []).filter(isContextFile);
+    return { files: files.length, characters: context.length };
+  }
+
+  globalStats(folder: string): { files: number; characters: number } {
+    if (!folder || !existsSync(folder)) return { files: 0, characters: 0 };
+    const files = walk(folder).filter(isContextFile);
+    return { files: files.length, characters: this.globalContext(folder).length };
+  }
+
+  appendLearning(folder: string, sessionId: string, line: string): string {
+    if (!folder) return "";
+    this.select({ path: folder });
+    const safeSessionId = sessionId.replace(/[^a-zA-Z0-9-]+/g, "-") || "unsessioned";
+    const path = join(folder, "learnings", `${safeSessionId}.observations.md`);
+    if (!existsSync(path)) appendFileSync(path, "# Session Observations\n\nThese are observed statements from the conversation and may require verification.\n\n", "utf8");
+    appendFileSync(path, `${line}\n`, "utf8");
+    return path;
   }
 
   appendTranscript(folder: string, line: string): void {
@@ -221,6 +283,38 @@ function normalizeVoiceProfile(profile: VoiceProfile): VoiceProfile {
   };
 }
 
+function migrateAppaTalksVoiceProfile(profile: VoiceProfile): VoiceProfile {
+  if (!isLegacyDefaultVoiceProfile(profile)) return profile;
+  const instructions = profile.instructions.replace(/atsla/gi, "AppaTalks").replace(/appatalks/gi, "AppaTalks");
+  return {
+    ...profile,
+    id: "appatalks",
+    name: "AppaTalks",
+    instructions: instructions.startsWith("You are AppaTalks") ? ensureAtslaExpansion(instructions) : ensureAtslaExpansion(`You are AppaTalks. ${instructions}`),
+  };
+}
+
+function migrateAppaTalksAgentProfile(profile: AgentProfile): AgentProfile {
+  if (profile.id !== "support" || !["Support Partner", "Atsla Support Partner"].includes(profile.name)) return profile;
+  return {
+    ...profile,
+    name: "AppaTalks Support Partner",
+    instructions: profile.instructions.startsWith("You are AppaTalks") ? ensureAtslaExpansion(profile.instructions) : ensureAtslaExpansion(`You are AppaTalks. ${profile.instructions.replace(/atsla/gi, "AppaTalks")}`),
+  };
+}
+
+function isLegacyDefaultVoiceSelection(value: string | undefined): boolean {
+  return value === "Atsla" || value === "atsla" || value === "Appatalks";
+}
+
+function isLegacyDefaultVoiceProfile(profile: VoiceProfile): boolean {
+  return profile.id.toLowerCase() === "atsla" || profile.name === "Atsla" || profile.name === "Appatalks";
+}
+
+function ensureAtslaExpansion(instructions: string): string {
+  return /ATSLA means AppaTalks Support Live Agent/i.test(instructions) ? instructions : `${instructions} ATSLA means AppaTalks Support Live Agent.`;
+}
+
 function clampVoiceNumber(value: number, fallback: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
 }
@@ -248,6 +342,23 @@ function walk(folder: string): string[] {
     } catch {}
   }
   return files;
+}
+
+function isContextFile(file: string): boolean {
+  return [".md", ".txt", ".json"].includes(extname(file).toLowerCase());
+}
+
+function readContextFiles(files: string[], root: string, maxCharacters: number): string {
+  let result = "";
+  for (const file of files) {
+    if (result.length >= maxCharacters) break;
+    try {
+      const content = readFileSync(file, "utf8").trim();
+      if (!content) continue;
+      result += `\n[${relative(root, file)}]\n${content.slice(0, 4_000)}\n`;
+    } catch {}
+  }
+  return result.trim();
 }
 
 function dateKey(): string {

@@ -1,7 +1,7 @@
 {
-  "name": "voice-bridge",
+  "name": "atsla-support-live-agent",
   "version": "0.1.0",
-  "description": "Local audio bridge for approved AI meeting responses",
+  "description": "Local, operator-controlled AI support agent for live conversations",
   "main": "desktop/main.cjs",
   "scripts": {
     "test": "vitest run",
@@ -22,16 +22,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/appatalks/teams-support-live-agent.git"
+    "url": "git+https://github.com/appatalks/atsla-support-live-agent.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/appatalks/teams-support-live-agent/issues"
+    "url": "https://github.com/appatalks/atsla-support-live-agent/issues"
   },
-  "homepage": "https://github.com/appatalks/teams-support-live-agent#readme",
+  "homepage": "https://github.com/appatalks/atsla-support-live-agent#readme",
   "dependencies": {
     "@fastify/cors": "^11.3.0",
     "fastify": "^5.10.0"

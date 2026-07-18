@@ -12,12 +12,16 @@ describe("HTTP control plane", () => {
     testRoot = mkdtempSync(join(tmpdir(), "voice-bridge-server-test-"));
     process.env.VOICE_BRIDGE_SETTINGS_PATH = join(testRoot, "settings.json");
     process.env.VOICE_BRIDGE_SESSIONS_PATH = join(testRoot, "sessions");
+    process.env.VOICE_BRIDGE_CLIENTS_ROOT = join(testRoot, "clients");
+    process.env.VOICE_BRIDGE_GLOBAL_KNOWLEDGE_PATH = join(testRoot, "global");
   });
 
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
     delete process.env.VOICE_BRIDGE_SETTINGS_PATH;
     delete process.env.VOICE_BRIDGE_SESSIONS_PATH;
+    delete process.env.VOICE_BRIDGE_CLIENTS_ROOT;
+    delete process.env.VOICE_BRIDGE_GLOBAL_KNOWLEDGE_PATH;
     rmSync(testRoot, { recursive: true, force: true });
   });
 
@@ -42,12 +46,16 @@ describe("HTTP control plane", () => {
 
     const dashboard = await server.inject({ method: "GET", url: "/" });
     expect(dashboard.headers["content-type"]).toContain("text/html");
-    expect(dashboard.body).toContain("Local Meeting Agent");
+    expect(dashboard.body).toContain("ATSLA | Support Live Agent");
+    expect(dashboard.body).toContain("AppaTalks");
     expect(dashboard.body).toContain("input-mode.active");
     expect(dashboard.body).toContain("Live representative requested");
     expect(dashboard.body).toContain("Take over");
     expect(dashboard.body).toContain("html,body{height:100%;overflow:hidden}");
     expect(dashboard.body).toContain(".timeline{min-height:0;overflow-y:auto");
+    expect(dashboard.body).toContain("session-rename-input");
+    expect(dashboard.body).not.toContain("window.prompt('Rename session'");
+    expect(dashboard.body).toContain("Writing meeting summary...");
     const script = dashboard.body.match(/<script>([\s\S]*)<\/script>/)?.[1];
     expect(script).toBeTruthy();
     expect(() => new Function(script!)).not.toThrow();
@@ -70,5 +78,35 @@ describe("HTTP control plane", () => {
     const options = (await server.inject({ method: "GET", url: "/v1/provider-options" })).json();
     const copilot = options.providers.find((provider: { id: string }) => provider.id === "copilot-acp");
     expect(copilot.models.map((model: { id: string }) => model.id)).toEqual(expect.arrayContaining(["gpt-5.6-terra", "gpt-5.6-luna"]));
+  });
+
+  it("renames a persisted session and rejects blank titles", async () => {
+    const server = buildServer();
+    servers.push(server);
+    await server.inject({ method: "POST", url: "/v1/client-workspace", payload: { name: "Session Client" } });
+    const created = (await server.inject({ method: "POST", url: "/v1/sessions", payload: { title: "Original" } })).json().session;
+
+    const renamed = await server.inject({ method: "PATCH", url: `/v1/sessions/${created.id}`, payload: { title: "Renamed session" } });
+    expect(renamed.statusCode).toBe(200);
+    expect(renamed.json().session.title).toBe("Renamed session");
+    expect((await server.inject({ method: "GET", url: "/v1/sessions" })).json().sessions[0].title).toBe("Renamed session");
+
+    const blank = await server.inject({ method: "PATCH", url: `/v1/sessions/${created.id}`, payload: { title: "   " } });
+    expect(blank.statusCode).toBe(400);
+  });
+
+  it("explicitly loads and clears only the selected client context", async () => {
+    const server = buildServer();
+    servers.push(server);
+    const selected = (await server.inject({ method: "POST", url: "/v1/client-workspace", payload: { name: "Context Client" } })).json();
+    expect(selected.clientWorkspace).toContain("Context-Client");
+    expect((await server.inject({ method: "GET", url: "/v1/context/status" })).json().client.loaded).toBe(false);
+
+    const loaded = await server.inject({ method: "POST", url: "/v1/context/load" });
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json()).toMatchObject({ loaded: true, path: selected.clientWorkspace });
+
+    const cleared = await server.inject({ method: "POST", url: "/v1/context/clear" });
+    expect(cleared.json()).toMatchObject({ loaded: false, path: "", files: 0 });
   });
 });
