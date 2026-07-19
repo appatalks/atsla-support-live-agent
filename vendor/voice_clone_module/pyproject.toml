@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-clone-module"
+version = "0.1.0"
+description = "Reusable Chatterbox voice cloning for Python applications and AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "chatterbox-tts==0.1.7",
+    "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@ce86c49d029f42272c1902eccb675556b9ed2330",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+voice-clone = "voice_clone_module.cli:main"
+voice-demo = "voice_clone_module.demo.server:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+voice_clone_module = ["demo/static/*"]

@@ -15,7 +15,9 @@ describe("AppaTalks Standard Greeting cache", () => {
     expect(supervisor).toContain("--eva-reference \"$eva_reference\"");
     expect(supervisor).toContain("--seed-audio \"$greeting_seed\"");
     expect(existsSync(`${root}/assets/prewarmed/appatalks-standard-greeting.wav`)).toBe(true);
+    expect(existsSync(`${root}/assets/voices/appatalks-voice.wav`)).toBe(true);
     expect(existsSync(`${root}/assets/voices/eva-voice.wav`)).toBe(true);
+    expect(supervisor).toContain('assets/voices/appatalks-voice.wav');
   });
 
   it("persists only warmed greeting audio and keys it to the reference and expression settings", () => {

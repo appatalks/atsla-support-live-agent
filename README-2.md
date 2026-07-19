@@ -143,7 +143,7 @@ Live-representative requests cancel pending autonomous work and retain an operat
 
 ## Voice Output
 
-The local AppaTalks profile uses Chatterbox speech synthesis. The AppaTalks Standard Greeting is packaged as a fingerprint-validated seed cache, so a matching authorized reference can start without regenerating it; replacing the reference safely triggers a fresh synthesis. Settings include an Eva profile that uses the bundled Eva reference voice and Eva's warm, curious, direct conversational style. Set `EVA_VOICE_REFERENCE` to replace that source later. Settings expose per-profile expression (`exaggeration`) and pacing (`cfg_weight`) controls. The original Chatterbox model does not support Turbo paralinguistic tags, so ATSLA uses natural punctuation and wording instead.
+The vendored `voice_clone_module` provides local Chatterbox speech synthesis. Voice reference files live in `assets/voices/`: `appatalks-voice.wav` is the default AppaTalks reference and `eva-voice.wav` is the bundled Eva reference. Add authorized local references to that folder, then use `VOICE_CLONE_REFERENCE` or `EVA_VOICE_REFERENCE` to select a replacement. The AppaTalks Standard Greeting is packaged as a fingerprint-validated seed cache, so a matching authorized reference can start without regenerating it; replacing the reference safely triggers a fresh synthesis. Settings expose per-profile expression (`exaggeration`) and pacing (`cfg_weight`) controls. The original Chatterbox model does not support Turbo paralinguistic tags, so ATSLA uses natural punctuation and wording instead.
 
 Voice output is sent only to the `voice_bridge_agent` sink on Linux. The operator can monitor it through the physical-output loopback.
 

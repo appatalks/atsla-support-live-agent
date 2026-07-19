@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +16,9 @@ describe("installation entry points", () => {
     expect(installer).toContain('[[ "$INSTALL_VOICE" == "true" ]] || return 0');
     expect(installer).toContain('node "$electron_dir/install.js"');
     expect(installer).toContain('npm install --include=dev');
+    expect(installer).not.toContain("gh repo clone appatalks/voice_clone_module");
+    expect(existsSync(`${root}/vendor/voice_clone_module/pyproject.toml`)).toBe(true);
+    expect(existsSync(`${root}/assets/voices/appatalks-voice.wav`)).toBe(true);
   });
 
   it("starts ATSLA's independent stateless Copilot ACP bridge", () => {

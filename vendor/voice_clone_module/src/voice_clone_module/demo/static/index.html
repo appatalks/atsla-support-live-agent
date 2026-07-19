@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Clone Agent</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL VOICE AGENT</p>
+        <h1>Talk it through.</h1>
+        <p class="subhead">A private chat loop with a local language model and your reference voice.</p>
+      </div>
+      <span id="status" class="status">Ready</span>
+    </header>
+
+    <section class="controls" aria-label="Agent controls">
+      <label for="model">Local model</label>
+      <select id="model"></select>
+      <button id="record" class="record-button" type="button" aria-pressed="false">
+        <span class="record-dot" aria-hidden="true"></span><span id="record-label">Speak</span>
+      </button>
+    </section>
+
+    <section id="conversation" class="conversation" aria-live="polite">
+      <div class="empty-state">
+        <span class="signal">VOICE / TEXT</span>
+        <h2>Start with a thought.</h2>
+        <p>Your message stays on this machine. Replies arrive as text and playable audio.</p>
+      </div>
+    </section>
+
+    <form id="chat-form" class="composer">
+      <label class="sr-only" for="message">Message</label>
+      <textarea id="message" rows="2" maxlength="4000" placeholder="Ask the local agent something..." required></textarea>
+      <button id="send" type="submit"><span>Send</span><span aria-hidden="true">&rarr;</span></button>
+    </form>
+    <p class="note">The first message loads the local language model and voice model, so it may take a moment.</p>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

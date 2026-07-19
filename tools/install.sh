@@ -39,15 +39,7 @@ check_linux_prerequisites() {
 
 setup_voice_module() {
   [[ "$INSTALL_VOICE" == "true" ]] || return 0
-  if [[ ! -f "$VOICE_MODULE_DIR/install.sh" ]]; then
-    if command -v gh >/dev/null 2>&1; then
-      mkdir -p "$(dirname "$VOICE_MODULE_DIR")"
-      gh repo clone appatalks/voice_clone_module "$VOICE_MODULE_DIR"
-    else
-      echo "voice_clone_module is required at $VOICE_MODULE_DIR. Set VOICE_CLONE_MODULE_PATH or install and authenticate gh." >&2
-      exit 1
-    fi
-  fi
+  [[ -f "$VOICE_MODULE_DIR/install.sh" ]] || { echo "voice_clone_module source is missing at $VOICE_MODULE_DIR." >&2; exit 1; }
   need uv || {
     echo "Install uv from https://docs.astral.sh/uv/, then rerun." >&2
     exit 1
@@ -152,7 +144,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 Usage: ./tools/install.sh [--skip-voice] [--skip-whisper] [--no-launcher]
 
 Environment options:
-  VOICE_CLONE_MODULE_PATH     Existing private voice_clone_module checkout.
+  VOICE_CLONE_MODULE_PATH     Alternate voice_clone_module source directory.
   VOICE_BRIDGE_INSTALL_VOICE  Set false to skip voice module setup.
   VOICE_BRIDGE_INSTALL_WHISPER Set false to skip local Whisper bootstrap.
   VOICE_BRIDGE_INSTALL_LAUNCHER Set false to skip atsla launcher and desktop entry.

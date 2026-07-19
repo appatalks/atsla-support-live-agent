@@ -82,7 +82,7 @@ start() {
     [[ -n "${VOICE_BRIDGE_REMOTE_TTS_URL:-}" ]] && tts_mode="remote" || tts_mode="local"
   fi
   local voice_url
-  local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/vendor/voice_clone_module/voices/appatalks.wav}"
+  local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/assets/voices/appatalks-voice.wav}"
   local eva_reference="${EVA_VOICE_REFERENCE:-$ROOT_DIR/assets/voices/eva-voice.wav}"
   local greeting_seed="$ROOT_DIR/assets/prewarmed/appatalks-standard-greeting.wav"
   local greeting_seed_reference_sha256="92ad8aa65c4237a1999a65ab775731088af46831fc94e6944ec92b1887c93fbf"
