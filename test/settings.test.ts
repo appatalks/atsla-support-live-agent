@@ -70,6 +70,7 @@ describe("default voice profile", () => {
       cfgWeight: 0.4,
     });
     expect(defaults.voiceProfile).toBe("AppaTalks");
+    expect(defaults.ttsEngineUrl).toBe("http://127.0.0.1:8090/");
     expect(defaults.responseMode).toBe("autonomous");
     expect(defaults.defaultInputMode).toBe("agent");
   });
@@ -85,6 +86,34 @@ describe("default voice profile", () => {
       expect(new SettingsStore(path).get().voiceProfiles[0].instructions).toBe("Custom reliability instruction.");
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a network TTS engine URL and rejects unsupported protocols", () => {
+    const root = mkdtempSync(join(tmpdir(), "voice-bridge-tts-settings-"));
+    try {
+      const store = new SettingsStore(join(root, "settings.json"));
+      store.update({ ttsEngineUrl: "https://gpu-tts.example.test:8090/" });
+
+      expect(new SettingsStore(join(root, "settings.json")).get().ttsEngineUrl).toBe("https://gpu-tts.example.test:8090/");
+      expect(() => store.update({ ttsEngineUrl: "file:///tmp/tts" })).toThrow("valid HTTP(S)");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the configured remote URL as the initial TTS engine location", () => {
+    const previousLocalUrl = process.env.LOCAL_VOICE_BRIDGE_URL;
+    const previousRemoteUrl = process.env.VOICE_BRIDGE_REMOTE_TTS_URL;
+    try {
+      delete process.env.LOCAL_VOICE_BRIDGE_URL;
+      process.env.VOICE_BRIDGE_REMOTE_TTS_URL = "https://gpu-tts.example.test:8090/";
+      expect(defaultSettings().ttsEngineUrl).toBe("https://gpu-tts.example.test:8090/");
+    } finally {
+      if (previousLocalUrl === undefined) delete process.env.LOCAL_VOICE_BRIDGE_URL;
+      else process.env.LOCAL_VOICE_BRIDGE_URL = previousLocalUrl;
+      if (previousRemoteUrl === undefined) delete process.env.VOICE_BRIDGE_REMOTE_TTS_URL;
+      else process.env.VOICE_BRIDGE_REMOTE_TTS_URL = previousRemoteUrl;
     }
   });
 

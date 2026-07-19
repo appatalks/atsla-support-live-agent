@@ -66,6 +66,20 @@ describe("voice expression controls", () => {
     await output.dispatch(draft, { exaggeration: 0.7, cfgWeight: 0.3, profileId: "eva" });
     expect(payload).toMatchObject({ exaggeration: 0.7, cfg_weight: 0.3, voice_profile: "eva" });
   });
+
+  it("adds bearer authentication when a remote TTS token is configured", async () => {
+    let headers: HeadersInit | undefined;
+    const fakeFetch: typeof fetch = async (_input, init) => {
+      headers = init?.headers;
+      return new Response(new Uint8Array([82, 73, 70, 70]), { status: 200 });
+    };
+    const output = new LocalVoiceBridgeOutput(new URL("http://gpu-tts-host:8090/"), fakeFetch, "shared-secret");
+    const reply = await new SimulationProvider().complete({ transcript: [], question: "Status?" });
+    const draft = new DraftStore().create("Status?", reply, "authorized");
+
+    await output.dispatch(draft);
+    expect(headers).toMatchObject({ authorization: "Bearer shared-secret" });
+  });
 });
 
 describe("autonomous meeting replies", () => {

@@ -31,6 +31,7 @@ export interface VoiceBridgeSettings {
   modelProvider: "local-qwen" | "copilot-acp";
   inputModel: string;
   copilotModel: string;
+  ttsEngineUrl: string;
   voiceProfile: string;
   voiceProfiles: VoiceProfile[];
   activeProfileId: string;
@@ -82,6 +83,7 @@ export function defaultSettings(): VoiceBridgeSettings {
     modelProvider: "local-qwen",
     inputModel: "qwen3-8b",
     copilotModel: "auto",
+    ttsEngineUrl: process.env.LOCAL_VOICE_BRIDGE_URL ?? process.env.VOICE_BRIDGE_REMOTE_TTS_URL ?? "http://127.0.0.1:8090/",
     voiceProfile: "AppaTalks",
     voiceProfiles: defaultVoiceProfiles.map((profile) => ({ ...profile })),
     activeProfileId: "support",
@@ -115,6 +117,7 @@ export class SettingsStore {
     const appearanceTheme = isAppearanceTheme(partial.appearanceTheme) ? partial.appearanceTheme : this.value.appearanceTheme;
     const defaultInputMode = partial.defaultInputMode === "operator" ? "operator" : partial.defaultInputMode === "agent" ? "agent" : this.value.defaultInputMode;
     const inputModel = typeof partial.inputModel === "string" ? partial.inputModel : this.value.inputModel;
+    const ttsEngineUrl = typeof partial.ttsEngineUrl === "string" ? normalizeTtsEngineUrl(partial.ttsEngineUrl, this.value.ttsEngineUrl) : this.value.ttsEngineUrl;
     const modelProvider = partial.modelProvider === "copilot-acp" ? "copilot-acp" : partial.modelProvider === "local-qwen" ? "local-qwen" : this.value.modelProvider;
     const activeProfileId = profiles.some((profile) => profile.id === partial.activeProfileId) ? partial.activeProfileId! : this.value.activeProfileId;
     this.value = {
@@ -126,6 +129,7 @@ export class SettingsStore {
       defaultInputMode,
       modelProvider,
       inputModel,
+      ttsEngineUrl,
       activeProfileId,
       profiles,
       voiceProfiles,
@@ -159,9 +163,11 @@ export class SettingsStore {
           profile.instructions += " Use natural contractions, brief thoughtful pauses, varied sentence rhythm, and warm human phrasing without narrating internal reasoning.";
         }
       }
+      const defaults = defaultSettings();
       const value: VoiceBridgeSettings = {
-        ...defaultSettings(),
+        ...defaults,
         ...migrated,
+        ttsEngineUrl: normalizeTtsEngineUrl(migrated.ttsEngineUrl, defaults.ttsEngineUrl),
         voiceProfile: isLegacyDefaultVoiceSelection(migrated.voiceProfile) ? "AppaTalks" : migrated.voiceProfile ?? "AppaTalks",
         profiles: (migrated.profiles?.length ? migrated.profiles : defaultProfiles).map(normalizeProfile).map(migrateAppaTalksAgentProfile),
         voiceProfiles,
@@ -370,6 +376,17 @@ function ensureAtslaExpansion(instructions: string): string {
 
 function clampVoiceNumber(value: number, fallback: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback;
+}
+
+function normalizeTtsEngineUrl(value: string | undefined, fallback: string): string {
+  const candidate = value?.trim() || fallback;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
+    return url.toString();
+  } catch {
+    throw new Error("TTS engine URL must be a valid HTTP(S) URL.");
+  }
 }
 
 function safeName(value: string): string {

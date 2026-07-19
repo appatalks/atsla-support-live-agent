@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 from http import HTTPStatus
@@ -18,7 +19,7 @@ MAX_INPUT_CHARS = 12_000
 
 
 class VoiceService:
-    def __init__(self, reference: Path, eva_reference: Path | None, cache_dir: Path, warm_texts: set[str], seed_audio: Path | None, seed_reference_sha256: str) -> None:
+    def __init__(self, reference: Path, eva_reference: Path | None, cache_dir: Path, warm_texts: set[str], seed_audio: Path | None, seed_reference_sha256: str, auth_token: str = "") -> None:
         self.reference = reference
         self.references = {"appatalks": reference}
         if eva_reference:
@@ -27,6 +28,7 @@ class VoiceService:
         self.warm_texts = warm_texts
         self.seed_audio = seed_audio
         self.seed_reference_sha256 = seed_reference_sha256
+        self.auth_token = auth_token
         self.engines: dict[str, Any] = {}
         self.load_error: str | None = None
         self.lock = Lock()
@@ -121,6 +123,16 @@ class VoiceService:
 class Handler(BaseHTTPRequestHandler):
     service: VoiceService
 
+    def require_auth(self) -> bool:
+        expected = self.service.auth_token
+        if not expected:
+            return True
+        supplied = self.headers.get("Authorization", "")
+        valid = hmac.compare_digest(supplied, f"Bearer {expected}")
+        if not valid:
+            self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "authorization required"})
+        return valid
+
     def send_json(self, status: HTTPStatus, body: dict[str, object]) -> None:
         data = json.dumps(body).encode()
         self.send_response(status)
@@ -133,11 +145,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/") != "/health":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
+        if not self.require_auth():
+            return
         self.send_json(HTTPStatus.OK, self.service.health())
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path.rstrip("/") != "/v1/speech":
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        if not self.require_auth():
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -188,6 +204,7 @@ def main() -> None:
         set(),
         args.seed_audio.expanduser().resolve() if args.seed_audio else None,
         args.seed_reference_sha256,
+        os.getenv("VOICE_BRIDGE_TTS_AUTH_TOKEN", "").strip(),
     )
     if args.warm_text:
         try:

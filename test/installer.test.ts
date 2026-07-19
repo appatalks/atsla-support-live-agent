@@ -27,4 +27,22 @@ describe("installation entry points", () => {
     expect(bridge).toContain('"session/prompt"');
     expect(bridge).not.toContain("eva-agent");
   });
+
+  it("provides an opt-in direct remote TTS mode and GPU host launcher", () => {
+    const supervisor = readFileSync(`${root}/tools/voice-bridge.sh`, "utf8");
+    const server = readFileSync(`${root}/tools/tts-server.sh`, "utf8");
+    const loader = readFileSync(`${root}/tools/load-env.sh`, "utf8");
+    const envExample = readFileSync(`${root}/.env.example`, "utf8");
+    expect(supervisor).toContain('VOICE_BRIDGE_TTS_MODE');
+    expect(supervisor).toContain('VOICE_BRIDGE_REMOTE_TTS_URL');
+    expect(supervisor).toContain('load_env_file "$ROOT_DIR"');
+    expect(supervisor).toContain('"$tts_mode" == "auto"');
+    expect(supervisor).toContain('VOICE_BRIDGE_TTS_AUTH_TOKEN');
+    expect(loader).toContain('VOICE_BRIDGE_ENV_FILE');
+    expect(server).toContain('VOICE_BRIDGE_TTS_HOST');
+    expect(server).toContain('load_env_file "$ROOT_DIR"');
+    expect(server).toContain('local_voice_bridge.py');
+    expect(server).toContain('Set VOICE_BRIDGE_TTS_AUTH_TOKEN');
+    expect(envExample).toContain('VOICE_BRIDGE_REMOTE_TTS_URL=http://gpu-tts-host:8090/');
+  });
 });

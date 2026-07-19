@@ -22,6 +22,8 @@ describe("HTTP control plane", () => {
     delete process.env.VOICE_BRIDGE_SESSIONS_PATH;
     delete process.env.VOICE_BRIDGE_CLIENTS_ROOT;
     delete process.env.VOICE_BRIDGE_GLOBAL_KNOWLEDGE_PATH;
+    delete process.env.VOICE_BRIDGE_PROVIDER;
+    delete process.env.LOCAL_VOICE_BRIDGE_URL;
     rmSync(testRoot, { recursive: true, force: true });
   });
 
@@ -62,6 +64,7 @@ describe("HTTP control plane", () => {
     expect(dashboard.body).toContain("data-settings-tab=\"workspace\"");
     expect(dashboard.body).toContain("data-settings-tab=\"agent\"");
     expect(dashboard.body).toContain("data-settings-tab=\"voice\"");
+    expect(dashboard.body).toContain('id="ttsEngineUrl"');
     expect(dashboard.body).toContain("data-settings-tab=\"appearance\"");
     expect(dashboard.body).toContain("appearanceTheme");
     expect(dashboard.body).toContain("ATSLA signal");
@@ -95,6 +98,15 @@ describe("HTTP control plane", () => {
     expect(script).toBeTruthy();
     expect(() => new Function(script!)).not.toThrow();
     expect((await server.inject({ method: "GET", url: "/v1/models" })).json().profiles["qwen3-8b"].model).toBe("Qwen/Qwen3-8B");
+  });
+
+  it("uses the persisted TTS endpoint for a real provider without the legacy URL variable", async () => {
+    process.env.VOICE_BRIDGE_PROVIDER = "local-qwen";
+    delete process.env.LOCAL_VOICE_BRIDGE_URL;
+    const server = buildServer();
+    servers.push(server);
+
+    expect((await server.inject({ method: "GET", url: "/health" })).json().voice).toBe("LocalVoiceBridgeOutput");
   });
 
   it("reports audio status but refuses device creation unless explicitly enabled", async () => {

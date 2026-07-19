@@ -22,6 +22,13 @@ export interface SpeechOutput {
   dispatch(draft: Draft, options?: SpeechOptions): Promise<SpeechDispatch>;
   cancelAll(): void;
   history(): SpeechDispatch[];
+  configureEndpoint?(endpoint: URL): void;
+}
+
+function requestHeaders(authToken?: string): Record<string, string> {
+  return authToken?.trim()
+    ? { "content-type": "application/json", authorization: `Bearer ${authToken.trim()}` }
+    : { "content-type": "application/json" };
 }
 
 export class SimulatedSpeechOutput implements SpeechOutput {
@@ -50,14 +57,22 @@ export class SimulatedSpeechOutput implements SpeechOutput {
 }
 
 export class LocalVoiceBridgeOutput extends SimulatedSpeechOutput {
-  constructor(private readonly endpoint: URL, private readonly fetchImplementation: typeof fetch = fetch) {
+  constructor(
+    private endpoint: URL,
+    private readonly fetchImplementation: typeof fetch = fetch,
+    private readonly authToken?: string,
+  ) {
     super();
+  }
+
+  configureEndpoint(endpoint: URL): void {
+    this.endpoint = endpoint;
   }
 
   override async dispatch(draft: Draft, options?: SpeechOptions): Promise<SpeechDispatch> {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: requestHeaders(this.authToken),
       body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) {
@@ -74,18 +89,23 @@ export class PipeWireVoiceOutput extends SimulatedSpeechOutput {
   private readonly activeProcesses = new Set<ChildProcessWithoutNullStreams>();
 
   constructor(
-    private readonly endpoint: URL,
+    private endpoint: URL,
     private readonly target: string,
     private readonly spawnImplementation: typeof spawn = spawn,
     private readonly fetchImplementation: typeof fetch = fetch,
+    private readonly authToken?: string,
   ) {
     super();
+  }
+
+  configureEndpoint(endpoint: URL): void {
+    this.endpoint = endpoint;
   }
 
   override async dispatch(draft: Draft, options?: SpeechOptions): Promise<SpeechDispatch> {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: requestHeaders(this.authToken),
       body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) throw new Error(`Local voice bridge request failed with HTTP ${response.status}.`);
@@ -118,18 +138,23 @@ export class MacVoiceOutput extends SimulatedSpeechOutput {
   private readonly activeProcesses = new Set<ChildProcess>();
 
   constructor(
-    private readonly endpoint: URL,
+    private endpoint: URL,
     private readonly deviceId?: string,
     private readonly spawnImplementation: typeof spawn = spawn,
     private readonly fetchImplementation: typeof fetch = fetch,
+    private readonly authToken?: string,
   ) {
     super();
+  }
+
+  configureEndpoint(endpoint: URL): void {
+    this.endpoint = endpoint;
   }
 
   override async dispatch(draft: Draft, options?: SpeechOptions): Promise<SpeechDispatch> {
     const response = await this.fetchImplementation(new URL("v1/speech", this.endpoint), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: requestHeaders(this.authToken),
       body: JSON.stringify({ input: draft.reply.text, exaggeration: options?.exaggeration, cfg_weight: options?.cfgWeight, voice_profile: options?.profileId }),
     });
     if (!response.ok) throw new Error(`Local voice bridge request failed with HTTP ${response.status}.`);

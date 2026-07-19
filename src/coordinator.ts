@@ -139,6 +139,7 @@ export class MeetingCoordinator {
       throw new Error("Global knowledge and the client workspace must be separate, non-overlapping folders.");
     }
     this.settings = this.settingsStore?.update(partial) ?? { ...this.settings, ...partial };
+    this.speech.configureEndpoint?.(new URL(this.settings.ttsEngineUrl));
     if (this.settings.globalKnowledgeEnabled && this.settings.globalKnowledgePath) {
       this.settings.globalKnowledgePath = this.workspace.prepareGlobalKnowledge(this.settings.globalKnowledgePath);
     }

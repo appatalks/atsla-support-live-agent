@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/tools/load-env.sh"
+load_env_file "$ROOT_DIR"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/voice-bridge-supervisor"
 LOG_DIR="${VOICE_BRIDGE_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/voice-bridge}"
 PID_DIR="$RUNTIME_DIR/pids"
@@ -75,13 +77,32 @@ start() {
   fi
 
   local python="$ROOT_DIR/vendor/voice_clone_module/.venv/bin/python"
+  local tts_mode="${VOICE_BRIDGE_TTS_MODE:-}"
+  if [[ -z "$tts_mode" || "$tts_mode" == "auto" ]]; then
+    [[ -n "${VOICE_BRIDGE_REMOTE_TTS_URL:-}" ]] && tts_mode="remote" || tts_mode="local"
+  fi
+  local voice_url
   local voice_reference="${VOICE_CLONE_REFERENCE:-$ROOT_DIR/vendor/voice_clone_module/voices/appatalks.wav}"
   local eva_reference="${EVA_VOICE_REFERENCE:-$ROOT_DIR/assets/voices/eva-voice.wav}"
   local greeting_seed="$ROOT_DIR/assets/prewarmed/appatalks-standard-greeting.wav"
   local greeting_seed_reference_sha256="92ad8aa65c4237a1999a65ab775731088af46831fc94e6944ec92b1887c93fbf"
   local standard_greeting="Hi, I am AppaTalks, your AI support agent. I can help with support questions and next steps. If you would like a live representative, say Live Representative Please and I will notify one. How can I help today?"
   launch qwen env VOICE_BRIDGE_QWEN_MODEL="${VOICE_BRIDGE_QWEN_MODEL:-qwen3-8b}" VOICE_CLONE_DEVICE="${VOICE_CLONE_DEVICE:-auto}" "$python" "$ROOT_DIR/tools/qwen_bridge.py"
-  launch voice "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --eva-reference "$eva_reference" --seed-audio "$greeting_seed" --seed-reference-sha256 "$greeting_seed_reference_sha256" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
+  case "$tts_mode" in
+    local)
+      voice_url="http://127.0.0.1:8090/"
+      launch voice env VOICE_BRIDGE_TTS_AUTH_TOKEN="${VOICE_BRIDGE_TTS_AUTH_TOKEN:-}" "$python" "$ROOT_DIR/tools/local_voice_bridge.py" --host 127.0.0.1 --port 8090 --reference "$voice_reference" --eva-reference "$eva_reference" --seed-audio "$greeting_seed" --seed-reference-sha256 "$greeting_seed_reference_sha256" --warm-text "$standard_greeting" --warm-exaggeration 0.65 --warm-cfg-weight 0.35
+      ;;
+    remote)
+      voice_url="${VOICE_BRIDGE_REMOTE_TTS_URL:-}"
+      [[ -n "$voice_url" ]] || { echo "VOICE_BRIDGE_REMOTE_TTS_URL is required when VOICE_BRIDGE_TTS_MODE=remote." >&2; return 1; }
+      [[ -n "${VOICE_BRIDGE_TTS_AUTH_TOKEN:-}" ]] || { echo "VOICE_BRIDGE_TTS_AUTH_TOKEN is required when VOICE_BRIDGE_TTS_MODE=remote." >&2; return 1; }
+      ;;
+    *)
+      echo "VOICE_BRIDGE_TTS_MODE must be local or remote." >&2
+      return 1
+      ;;
+  esac
 
   if command -v copilot >/dev/null 2>&1; then
     launch copilot env \
@@ -97,7 +118,8 @@ start() {
     VOICE_BRIDGE_PROVIDER=local-qwen \
     LOCAL_QWEN_URL=http://127.0.0.1:8001/ \
     COPILOT_ACP_URL=http://127.0.0.1:8888/ \
-    LOCAL_VOICE_BRIDGE_URL=http://127.0.0.1:8090/ \
+    LOCAL_VOICE_BRIDGE_URL="$voice_url" \
+    VOICE_BRIDGE_TTS_AUTH_TOKEN="${VOICE_BRIDGE_TTS_AUTH_TOKEN:-}" \
     VOICE_BRIDGE_VOICE_PROFILE=AppaTalks \
     VOICE_BRIDGE_TRANSCRIPTION_MODEL="whisper.cpp base.en" \
     VOICE_BRIDGE_AUDIO_OUTPUT="$audio_output" \

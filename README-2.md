@@ -147,6 +147,37 @@ The local AppaTalks profile uses Chatterbox speech synthesis. The AppaTalks Stan
 
 Voice output is sent only to the `voice_bridge_agent` sink on Linux. The operator can monitor it through the physical-output loopback.
 
+### Optional Remote TTS
+
+Local TTS remains the default. The GPU machine does not need the ATSLA desktop, API, Qwen bridge, Copilot bridge, or Whisper service. It only needs the ATSLA checkout's voice runtime and TTS service. Create a `.env` file in the ATSLA checkout on the GPU machine:
+
+```bash
+VOICE_BRIDGE_TTS_AUTH_TOKEN=use-a-long-shared-secret
+export VOICE_BRIDGE_TTS_HOST=0.0.0.0
+export VOICE_BRIDGE_TTS_PORT=8090
+VOICE_CLONE_DEVICE=auto
+```
+
+Then start the service with `bash tools/tts-server.sh`. Keep that process running under systemd, tmux, or another service manager.
+
+Restrict port `8090` to the client host or a private VPN in the GPU machine firewall. The server requires the bearer token and exposes only `/health` and `/v1/speech`.
+
+On the client machine, create a separate `.env` file in its ATSLA checkout. The mode is optional: a configured remote URL automatically selects remote mode. Setting `VOICE_BRIDGE_TTS_MODE=remote` makes the choice explicit.
+
+```bash
+VOICE_BRIDGE_TTS_MODE=remote
+VOICE_BRIDGE_REMOTE_TTS_URL=http://gpu-tts-host:8090/
+VOICE_BRIDGE_TTS_AUTH_TOKEN=use-a-long-shared-secret
+```
+
+Start ATSLA normally; no exports are required:
+
+```bash
+atsla
+```
+
+The Voice settings tab is populated with the resolved endpoint from this configuration. Changing **TTS engine location** and saving updates the active speech route immediately. The client still performs PipeWire or CoreAudio playback locally. Set `VOICE_BRIDGE_TTS_MODE=local` and remove the remote URL to return to local synthesis.
+
 ## Console Appearance
 
 The **Appearance** settings tab provides four persistent console themes:

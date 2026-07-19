@@ -1,4 +1,5 @@
 import { type LocalModelId, type ResponseMode, modelProfiles, responseTemplates } from "./domain.js";
+import { spawn } from "node:child_process";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { fastifyRateLimit } from "@fastify/rate-limit";
@@ -15,10 +16,11 @@ import { SessionStore } from "./session-store.js";
 
 const responseModes: ResponseMode[] = ["disabled", "suggest", "approval", "guarded-autonomous", "autonomous"];
 
-async function isReachable(endpoint: URL | undefined): Promise<boolean> {
+async function isReachable(endpoint: URL | undefined, authToken?: string): Promise<boolean> {
   if (!endpoint) return false;
   try {
-    const response = await fetch(new URL("health", endpoint), { signal: AbortSignal.timeout(1_500) });
+    const headers = authToken?.trim() ? { authorization: `Bearer ${authToken.trim()}` } : undefined;
+    const response = await fetch(new URL("health", endpoint), { headers, signal: AbortSignal.timeout(1_500) });
     return response.ok;
   } catch {
     return false;
@@ -43,14 +45,17 @@ export function buildServer() {
     : providerKind === "openai-compatible"
       ? new OpenAiCompatibleProvider(new URL(process.env.LOCAL_MODEL_URL ?? "http://127.0.0.1:1234/v1/"), modelId)
       : new SimulationProvider();
-  const voiceBridgeUrl = process.env.LOCAL_VOICE_BRIDGE_URL ? new URL(process.env.LOCAL_VOICE_BRIDGE_URL) : undefined;
+  const voiceBridgeUrl = providerKind !== "simulation" || process.env.LOCAL_VOICE_BRIDGE_URL
+    ? new URL(savedSettings.ttsEngineUrl)
+    : undefined;
+  const voiceBridgeAuthToken = process.env.VOICE_BRIDGE_TTS_AUTH_TOKEN;
   const audioOutput = process.env.VOICE_BRIDGE_AUDIO_OUTPUT;
   const speech = voiceBridgeUrl && audioOutput === "pipewire"
-    ? new PipeWireVoiceOutput(voiceBridgeUrl, process.env.VOICE_BRIDGE_AGENT_SINK ?? "voice_bridge_agent")
+    ? new PipeWireVoiceOutput(voiceBridgeUrl, process.env.VOICE_BRIDGE_AGENT_SINK ?? "voice_bridge_agent", spawn, fetch, voiceBridgeAuthToken)
     : voiceBridgeUrl && audioOutput === "coreaudio"
-      ? new MacVoiceOutput(voiceBridgeUrl, process.env.VOICE_BRIDGE_MAC_AGENT_DEVICE)
+      ? new MacVoiceOutput(voiceBridgeUrl, process.env.VOICE_BRIDGE_MAC_AGENT_DEVICE, spawn, fetch, voiceBridgeAuthToken)
     : voiceBridgeUrl
-      ? new LocalVoiceBridgeOutput(voiceBridgeUrl)
+      ? new LocalVoiceBridgeOutput(voiceBridgeUrl, fetch, voiceBridgeAuthToken)
       : new SimulatedSpeechOutput();
   const coordinator = new MeetingCoordinator(provider, new ResponsePolicy(), new DraftStore(), speech, settingsStore, new ClientWorkspace(), new SessionStore());
   const audio = new AudioControl(new URL("../tools/audio-bridge.sh", import.meta.url).pathname, process.env.VOICE_BRIDGE_ENABLE_AUDIO_CONTROL === "true");
@@ -70,7 +75,7 @@ export function buildServer() {
     audioControlEnabled: process.env.VOICE_BRIDGE_ENABLE_AUDIO_CONTROL === "true",
     dependencies: {
       modelReady: provider.id === "simulation" || await isReachable(provider.id === "copilot-acp" ? copilotAcpUrl : localQwenUrl),
-      voiceReady: voiceBridgeUrl ? await isReachable(voiceBridgeUrl) : speech.constructor === SimulatedSpeechOutput,
+      voiceReady: voiceBridgeUrl ? await isReachable(voiceBridgeUrl, voiceBridgeAuthToken) : speech.constructor === SimulatedSpeechOutput,
     },
   }));
   app.get("/v1/models", async () => ({ default: modelId, profiles: modelProfiles }));
